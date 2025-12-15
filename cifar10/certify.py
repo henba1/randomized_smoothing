@@ -9,12 +9,10 @@ import numpy as np
 #torch.manual_seed(0) #TODO ?
 from torchvision import transforms, datasets
 
-# Add parent directory to path to import rs_rd_research_code
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
 from core import Smooth
 from DRM import DiffusionRobustModel
-from rs_rd_research.paths import get_dataset_dir, get_models_dir, get_results_dir
+from ada_verona import get_dataset_dir, get_models_dir, get_results_dir
+
 from utils import (
     create_experiment_folder,
     get_balanced_sample,
@@ -30,7 +28,6 @@ RESULTS_DIR = get_results_dir()
 
 
 def main(args):
-    # Create a descriptive experiment name that includes classifier_name and timestamp
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     # Use the classifier_name parameter
     classifier_name_short = args.classifier_name.split("/")[-1] if args.classifier_name else "unknown"
@@ -111,12 +108,10 @@ def main(args):
             sample_size=args.sample_size
         )
     
-    # Save original CIFAR-10 indices
     indices_file = os.path.join(RESULTS_DIR, f"original_cifar10_indices_nsample_{args.sample_size}_{timestamp}.txt")
     np.savetxt(indices_file, original_indices, fmt='%d',
                header=f"Original CIFAR-10 test indices for balanced sample (n_sample={args.sample_size})")
 
-    # Log indices file to Comet ML
     tracker.log_asset(indices_file)
     
     # Get the timestep t corresponding to noise level sigma
@@ -129,7 +124,7 @@ def main(args):
         b = model.diffusion.sqrt_one_minus_alphas_cumprod[t]
         real_sigma = b / a
 
-    # Define the smoothed classifier
+    # Define smoothed classifier
     smoothed_classifier = Smooth(model, 10, args.sigma, t, sample_correct_predictions=args.sample_correct_predictions)
 
     f = open(output_file, 'w')

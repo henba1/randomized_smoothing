@@ -10,7 +10,7 @@ import comet_ml
 
 
 class CometTracker:
-    """Wrapper for Comet ML experiment tracking with error handling."""
+    """Wrapper for Comet ML experiment tracking."""
 
     def __init__(
         self,

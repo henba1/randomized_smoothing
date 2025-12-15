@@ -1,7 +1,8 @@
+import comet_ml
 import argparse
 import datetime
 import os
-import sys
+import logging
 import time
 from pathlib import Path
 
@@ -22,6 +23,11 @@ from utils import (
 from report_creator import create_filtered_report, create_verona_csv
 from comet_tracker import CometTracker
 
+
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("dulwich").setLevel(logging.WARNING)
+logging.getLogger("comet_ml").setLevel(logging.INFO)
+
 DATASET_DIR = get_dataset_dir()
 MODELS_DIR = get_models_dir()
 RESULTS_DIR = get_results_dir()
@@ -36,7 +42,7 @@ def main(args):
     dataset_name = os.path.basename(DATASET_DIR)
     experiment_name = f"{classifier_name_short}_{args.sigma}_{dataset_name}_{timestamp}"
     _, ddpm_model_name = get_diffusion_model_path_name_tuple(dataset_name)
-    # Initialize Comet ML tracker
+
     tracker = CometTracker(
         experiment_name,
         dataset_name,
@@ -47,8 +53,6 @@ def main(args):
         N0=args.N0,
         N=args.N,
     )
-
-    # Create experiment folder for this configuration
     experiment_folder = create_experiment_folder(
         RESULTS_DIR,
         safe_classifier_name,
@@ -253,8 +257,18 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=1000, help="batch size")
     parser.add_argument("--alpha", type=float, default=0.001, help="failure probability")
     parser.add_argument("--outfile", type=str, help="output file")
-    parser.add_argument("--sample_correct_predictions", type=bool, default=True, help="only certify correctly classified samples (default: True)")
-    parser.add_argument("--stratified", type=bool, default=True, help="use stratified sampling (default: True)")
+    parser.add_argument(
+        "--sample_correct_predictions",
+        type=lambda x: x if isinstance(x, bool) else x.lower() in ("true", "1", "yes", "t"),
+        default=True,
+        help="only certify correctly classified samples (default: True)",
+    )
+    parser.add_argument(
+        "--stratified",
+        type=lambda x: x if isinstance(x, bool) else x.lower() in ("true", "1", "yes", "t"),
+        default=True,
+        help="use stratified sampling (default: True)",
+    )
     # Classifier selection arguments
     parser.add_argument(
         "--classifier_type",

@@ -35,18 +35,35 @@ class ONNXClassifier(nn.Module):
         if not os.path.exists(onnx_path):
             raise FileNotFoundError(f"ONNX model not found at {onnx_path}")
         
+        # Check available providers before selecting (some runtimes omit this helper)
+        if hasattr(ort, "get_available_providers"):
+            available_providers = ort.get_available_providers()
+            print(f"Available providers: {available_providers}")
+        else:
+            available_providers = []
+            print(
+                "Warning: onnxruntime lacks `get_available_providers()`. "
+                "Assuming CPU execution provider only."
+            )
         
-        providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if device == "cuda" else ['CPUExecutionProvider']
-    
-        session_options = ort.SessionOptions()
-        session_options.inter_op_num_threads = 1
-        session_options.intra_op_num_threads = 1
+        # Only use CUDA if requested AND available
+        if device == "cuda" and "CUDAExecutionProvider" in available_providers:
+            providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        else:
+            providers = ['CPUExecutionProvider']
+            if device == "cuda":
+                print(f"Warning: CUDAExecutionProvider not available. Available providers: {available_providers}. Falling back to CPU.")
         
+        # Create session options if available, otherwise use None
         try:
-            self.session = ort.InferenceSession(onnx_path, sess_options=session_options, providers=providers)
-        except Exception as e:
-            print(f"Warning: CUDA not available, falling back to CPU: {e}")
-            self.session = ort.InferenceSession(onnx_path, sess_options=session_options, providers=['CPUExecutionProvider'])
+            session_options = ort.SessionOptions()
+            session_options.inter_op_num_threads = 1
+            session_options.intra_op_num_threads = 1
+        except AttributeError:
+            print("Warning: SessionOptions not available in onnxruntime, using default session options")
+            session_options = None
+        
+        self.session = ort.InferenceSession(onnx_path, sess_options=session_options, providers=providers)
         
         actual_providers = self.session.get_providers()
         print(f"ONNX Runtime execution providers: {actual_providers}")

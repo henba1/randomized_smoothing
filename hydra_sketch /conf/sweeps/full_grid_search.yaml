@@ -1,0 +1,13 @@
+# Full grid search example configuration
+# Usage: python certify.py --config-name full_grid_search --multirun
+
+defaults:
+  - /certify@_here_
+
+# Define sweep ranges here or via command line
+# Example command:
+# python certify.py --config-name full_grid_search -m \
+#   sigma=0.25,0.5,0.75 \
+#   sample_size=50,100,200 \
+#   classifier_name="aaraki/vit-base-patch16-224-in21k-finetuned-cifar10,model2,model3"
+

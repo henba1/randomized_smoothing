@@ -1,0 +1,34 @@
+# Hydra SLURM launcher configuration using submitit
+# This allows Hydra to submit jobs directly to SLURM
+
+_target_: hydra_plugins.hydra_submitit_launcher.submitit_launcher.SlurmLauncher
+
+submitit_folder: ${hydra.sweep.dir}/.submitit/${now:%Y-%m-%d_%H-%M-%S}
+
+# SLURM resource configuration
+partition: gpu_a100
+gpus_per_node: 1
+cpus_per_task: 18
+mem_gb: 120
+timeout_min: 30
+
+# Job naming
+name: certify_${hydra.job.name}
+comment: "Hydra certification sweep"
+
+# Output paths
+output_dir: ${hydra.sweep.dir}/.submitit/${now:%Y-%m-%d_%H-%M-%S}
+error_dir: ${hydra.sweep.dir}/.submitit/${now:%Y-%m-%d_%H-%M-%S}
+
+# Additional SLURM options
+additional_parameters:
+  # Add any additional SLURM parameters here
+  # e.g., exclude: "node001,node002"
+  # e.g., constraint: "gpu"
+
+# Setup commands (runs before your Python script)
+setup:
+  - source /gpfs/home2/jvrijn/miniforge3/etc/profile.d/conda.sh
+  - conda activate verona_new
+  - cd /home/jvrijn/code/rs/verif/VERONA_rs_rd/rs_rd/randomized_smoothing/cifar10
+

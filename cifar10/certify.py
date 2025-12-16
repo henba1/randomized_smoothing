@@ -4,16 +4,15 @@ import datetime
 import logging
 import time
 
-import numpy as np
 import torch
 from comet_tracker import CometTracker
 from core import Smooth
 from DRM import DiffusionRobustModel
-from report_creator import create_filtered_report, create_verona_csv
+from csv_result_writer import CSVResultWriter
 
 #torch.manual_seed(0) #TODO ?
+from signal_handler import setup_signal_handler
 from utils import (
-    UnflattenDataset,
     get_diffusion_model_path_name_tuple,
     override_args_with_cli,
 )
@@ -47,20 +46,19 @@ def main(args=None):
     random_seed = 42
 
     sample_correct_predictions = True
-    sample_stratified = True
-    # ----------------------------------------RANDOMIZED SMOOTHING VARIABLES------------------------------------------
+    sample_stratified = False
+    # ----------------------------------------RANDOMIZED SMOOTHING VARIABLES-----------------------------------------
     sigma = 0.25
     N0 = 100
     N = 100000
-    batch_size = 1000
+    batch_size = 200
     alpha = 0.001
-    
+    #----------------------------------------CLASSIFIER CONFIGURATION------------------------------------------------
     # classifier_type = "huggingface"
     # classifier_name = "aaraki/vit-base-patch16-224-in21k-finetuned-cifar10"
     classifier_type = "pytorch"
     classifier_name = "conv_big_best"
     
-
     default_params = {
         "dataset_name": dataset_name,
         "sigma": sigma,
@@ -93,7 +91,7 @@ def main(args=None):
     num_channels = dataset_config["channels"]
     num_classes = dataset_config["num_classes"]
 
-    # ----------------------------------------DATASET AND MODELS DIRECTORY CONFIGURATION---------------------------
+    # ----------------------------------------DATASET AND MODELS DIRECTORY CONFIGURATION-----------------------------
     DATASET_DIR = get_dataset_dir(dataset_name)
     MODELS_DIR = get_models_dir(dataset_name)
     RESULTS_DIR = get_results_dir(dataset_name)
@@ -101,6 +99,11 @@ def main(args=None):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     experiment_name = f"{classifier_name_short}_{sigma}_{dataset_name}_{timestamp}"
     _, ddpm_model_name = get_diffusion_model_path_name_tuple(dataset_name)
+    
+    verifier_string = (
+        f"RS_{classifier_name_short}_"
+        f"{ddpm_model_name}_{sigma}_{alpha}_{N0}_{N}"
+    )
 
     tracker = CometTracker(
         experiment_name,
@@ -119,9 +122,23 @@ def main(args=None):
         timestamp=timestamp,
     )
 
+    # ----------------------------------------OUTPUT FILES -----------------------------------------------------------
+    result_df_path = experiment_folder / "result_df.csv"
+    misclassified_df_path = experiment_folder / "misclassified_df.csv"
+    abstained_df_path = experiment_folder / "abstained_df.csv"
+    all_results_df_path = experiment_folder / "all_results_df.csv"
+    summary_df_path = experiment_folder / "summary_df.csv"
     output_file = experiment_folder / f"{experiment_name}_{timestamp}.txt"
+
+    csv_writer = CSVResultWriter(
+        result_df_path=result_df_path,
+        misclassified_df_path=misclassified_df_path,
+        abstained_df_path=abstained_df_path,
+        all_results_df_path=all_results_df_path,
+        summary_df_path=summary_df_path,
+        verifier_string=verifier_string,
+    )
     
-    # Log experiment parameters
     tracker.log_parameters({
         "sigma": sigma,
         "sample_size": sample_size,
@@ -130,16 +147,14 @@ def main(args=None):
         "N": N,
         "batch_size": batch_size,
         "alpha": alpha,
-        "outfile": str(output_file),
         "dataset": dataset_name,
         "classifier_type": classifier_type,
         "classifier_name": classifier_name
     })
     
-    # Log experiment start time
     tracker.log_metric("experiment_start_time", start_time)
     
-    # Initialize the model with specified classifier
+    # Initialize model with specified classifier
     model = DiffusionRobustModel(
         classifier_type=classifier_type,
         classifier_name=classifier_name,
@@ -150,17 +165,15 @@ def main(args=None):
     )
 
     sample_func = get_balanced_sample if sample_stratified else get_sample
-    sampled_dataset, original_indices = sample_func(
+    dataset, original_indices = sample_func(
         dataset_name=dataset_name,
         train_bool=(split == "train"),
         dataset_size=sample_size,
         dataset_dir=DATASET_DIR,
         seed=random_seed,
-        image_size=None 
+        image_size=None,
+        flatten=False,
     )
-    
-    height, width = image_size[1], image_size[0]
-    dataset = UnflattenDataset(sampled_dataset, channels=num_channels, height=height, width=width)
     
     indices_file = save_original_indices(
         dataset_name=dataset_name,
@@ -186,15 +199,21 @@ def main(args=None):
     # ----------------------------------------DEFINE SMOOTHED CLASSIFIER --------------------------------------------
     smoothed_classifier = Smooth(model, num_classes, sigma, t, sample_correct_predictions=sample_correct_predictions)
 
-    # ----------------------------------------CERTIFICATION PROCESS ------------------------------------------------
-    f = open(str(output_file), 'w')
-    print("original_idx\tlabel\tpredict\tradius\tcorrect\ttime", file=f, flush=True)
+    # Set up signal handlers for graceful shutdown
+    setup_signal_handler(csv_writer, tracker, output_file)
 
+    # ----------------------------------------CERTIFICATION PROCESS ------------------------------------------------
     total_num = 0
     correct = 0
+    n_misclassified = 0
+    n_abstain = 0
     total_samples = len(dataset)
 
     print(f"Starting certification on {total_samples} samples (seed={random_seed})")
+    
+    # Open txt file for writing
+    f = open(str(output_file), 'w')
+    print("original_idx\tlabel\tpredict\tradius\tcorrect\ttime", file=f, flush=True)
     
     for i in range(len(dataset)):
         original_idx = original_indices[i]  # Get true index
@@ -213,6 +232,21 @@ def main(args=None):
 
         time_elapsed = str(datetime.timedelta(seconds=certification_time))
         current_accuracy = correct / float(total_num)
+
+        # Append to appropriate CSV file based on prediction status
+        if prediction == Smooth.MISCLASSIFIED:
+            n_misclassified += 1
+        elif prediction == Smooth.ABSTAIN:
+            n_abstain += 1
+
+        csv_writer.append_result(
+            image_id=original_idx,
+            original_label=label,
+            predicted_class=prediction,
+            epsilon_value=radius,
+            total_time=time_elapsed,
+            prediction_status=prediction,
+        )
 
         tracker.log_metrics({
             "original_cifar10_index": original_idx,
@@ -240,14 +274,34 @@ def main(args=None):
         })
 
         print(f"{original_idx}\t{label}\t{prediction}\t{radius:.3}\t{correct}\t{time_elapsed}", file=f, flush=True)
-        
-        # Print progress every 10 samples
-        if total_num % 10 == 0:
+
+        if total_num % 20 == 0:
             print(f"Progress: {total_num}/{total_samples} samples processed ({current_accuracy:.4f} accuracy)")
+        
+        if total_num % 50 == 0:
+            try:
+                csv_writer.log_to_comet(tracker)
+                tracker.log_asset(str(output_file))
+                print(f"Periodic backup: CSV files and txt file logged to Comet ML (sample {total_num})")
+            except Exception as e:
+                print(f"Warning: Failed to log CSV files to Comet ML: {e}")
+
+    f.close()
 
     final_accuracy = correct / float(total_num)
     print("sigma %.2f accuracy of smoothed classifier %.4f " % (sigma, final_accuracy))
-    f.close()
+    
+    csv_writer.create_summary(
+        total_num=total_num,
+        correct=correct,
+        n_misclassified=n_misclassified,
+        n_abstain=n_abstain,
+        sigma=sigma,
+        alpha=alpha,
+        N0=N0,
+        N=N,
+        model_name=classifier_name_short,
+    )
     
     end_time = time.time()
     total_duration = end_time - start_time
@@ -264,7 +318,6 @@ def main(args=None):
     
     print(f"Total experiment duration: {total_duration:.2f} seconds ({datetime.timedelta(seconds=int(total_duration))})")
 
-    # Log experiment summary
     tracker.log_other("experiment_summary", {
         "total_balanced_samples": len(dataset),
         "split": split,
@@ -278,41 +331,17 @@ def main(args=None):
             "alpha": alpha,
             "batch_size": batch_size
         },
-        "output_file_path": str(output_file)
     })
 
-    # Log output files to Comet
+    csv_writer.log_to_comet(tracker)
     tracker.log_asset(str(output_file))
-    print(f"Original results file logged to Comet ML: {output_file}")
-    
-    if sample_correct_predictions:
-        # Filter out misclassified instances and create a filtered output file
-        filtered_output_file = output_file.with_name(output_file.stem + "_filtered.txt")
-        create_filtered_report(str(output_file), str(filtered_output_file), tracker.experiment)
-    else:
-        filtered_output_file = None
-    
-    verona_input_file = filtered_output_file if sample_correct_predictions else output_file
-    verona_csv_file = verona_input_file.with_name(verona_input_file.stem + "_result_df.csv")
-    create_verona_csv(
-        str(verona_input_file),
-        str(verona_csv_file),
-        classifier_name_short,
-        ddpm_model_name,
-        sigma,
-        alpha,
-        N0,
-        N,
-        tracker.experiment,
-    )
-    # End experiment
+    print(f"Results txt file logged to Comet ML: {output_file}")
     if tracker.is_active:
         tracker.end()
     else:
         print("Experiment completed (Comet ML tracking not avail)")
 
 if __name__ == "__main__":
-    # 
     parser = argparse.ArgumentParser(description='Predict on many examples')
     parser.add_argument("--sigma", type=float, default=None, help="noise hyperparameter")
     parser.add_argument("--sample_size", type=int, default=None, help="number of balanced samples to certify")

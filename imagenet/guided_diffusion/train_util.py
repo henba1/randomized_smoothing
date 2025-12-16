@@ -214,7 +214,7 @@ class TrainLoop:
             self.mp_trainer.backward(loss)
 
     def _update_ema(self):
-        for rate, params in zip(self.ema_rate, self.ema_params):
+        for rate, params in zip(self.ema_rate, self.ema_params, strict=False):
             update_ema(params, self.mp_trainer.master_params, rate=rate)
 
     def _anneal_lr(self):
@@ -242,7 +242,7 @@ class TrainLoop:
                     th.save(state_dict, f)
 
         save_checkpoint(0, self.mp_trainer.master_params)
-        for rate, params in zip(self.ema_rate, self.ema_params):
+        for rate, params in zip(self.ema_rate, self.ema_params, strict=False):
             save_checkpoint(rate, params)
 
         if dist.get_rank() == 0:
@@ -296,6 +296,6 @@ def log_loss_dict(diffusion, ts, losses):
     for key, values in losses.items():
         logger.logkv_mean(key, values.mean().item())
         # Log the quantiles (four quartiles, in particular).
-        for sub_t, sub_loss in zip(ts.cpu().numpy(), values.detach().cpu().numpy()):
+        for sub_t, sub_loss in zip(ts.cpu().numpy(), values.detach().cpu().numpy(), strict=False):
             quartile = int(4 * sub_t / diffusion.num_timesteps)
             logger.logkv_mean(f"{key}_q{quartile}", sub_loss)

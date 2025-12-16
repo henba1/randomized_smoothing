@@ -3,7 +3,7 @@ import inspect
 
 from . import gaussian_diffusion as gd
 from .respace import SpacedDiffusion, space_timesteps
-from .unet import SuperResModel, UNetModel, EncoderUNetModel
+from .unet import EncoderUNetModel, SuperResModel, UNetModel
 
 NUM_CLASSES = 1000
 
@@ -350,9 +350,7 @@ def sr_create_model(
 ):
     _ = small_size  # hack to prevent unused variable
 
-    if large_size == 512:
-        channel_mult = (1, 1, 2, 2, 4, 4)
-    elif large_size == 256:
+    if large_size == 512 or large_size == 256:
         channel_mult = (1, 1, 2, 2, 4, 4)
     elif large_size == 64:
         channel_mult = (1, 2, 3, 4)

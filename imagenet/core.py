@@ -1,13 +1,14 @@
-import torch
-from scipy.stats import norm, binomtest
-import numpy as np
 from math import ceil
+
+import numpy as np
+import torch
+from scipy.stats import binomtest, norm
 from statsmodels.stats.proportion import proportion_confint
 
 torch.manual_seed(0)
 
 # Adapted from https://github.com/locuslab/smoothing/blob/master/code/core.py
-class Smooth(object):
+class Smooth:
     """A smoothed classifier g """
 
     # to abstain, Smooth returns this int

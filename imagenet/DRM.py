@@ -1,12 +1,10 @@
-import torch
-import torch.nn as nn 
 import timm
-
+import torch
+import torch.nn as nn
 from guided_diffusion.script_util import (
-    NUM_CLASSES,
-    model_and_diffusion_defaults,
-    create_model_and_diffusion,
     args_to_dict,
+    create_model_and_diffusion,
+    model_and_diffusion_defaults,
 )
 
 

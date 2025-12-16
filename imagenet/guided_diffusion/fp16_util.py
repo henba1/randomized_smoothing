@@ -55,7 +55,7 @@ def model_grads_to_master_grads(param_groups_and_shapes, master_params):
     from make_master_params().
     """
     for master_param, (param_group, shape) in zip(
-        master_params, param_groups_and_shapes
+        master_params, param_groups_and_shapes, strict=False
     ):
         master_param.grad = _flatten_dense_tensors(
             [param_grad_or_zeros(param) for (_, param) in param_group]
@@ -68,9 +68,9 @@ def master_params_to_model_params(param_groups_and_shapes, master_params):
     """
     # Without copying to a list, if a generator is passed, this will
     # silently not copy any parameters.
-    for master_param, (param_group, _) in zip(master_params, param_groups_and_shapes):
+    for master_param, (param_group, _) in zip(master_params, param_groups_and_shapes, strict=False):
         for (_, param), unflat_master_param in zip(
-            param_group, unflatten_master_params(param_group, master_param.view(-1))
+            param_group, unflatten_master_params(param_group, master_param.view(-1)), strict=False
         ):
             param.detach().copy_(unflat_master_param)
 
@@ -98,10 +98,10 @@ def master_params_to_state_dict(
     if use_fp16:
         state_dict = model.state_dict()
         for master_param, (param_group, _) in zip(
-            master_params, param_groups_and_shapes
+            master_params, param_groups_and_shapes, strict=False
         ):
             for (name, _), unflat_master_param in zip(
-                param_group, unflatten_master_params(param_group, master_param.view(-1))
+                param_group, unflatten_master_params(param_group, master_param.view(-1)), strict=False
             ):
                 assert name in state_dict
                 state_dict[name] = unflat_master_param

@@ -1,12 +1,10 @@
-import os 
 import argparse
-import time 
-import datetime 
-from torchvision import transforms, datasets
+import datetime
+import time
 
-from core import Smooth 
+from core import Smooth
 from DRM import DiffusionRobustModel
-
+from torchvision import datasets, transforms
 
 IMAGENET_DATA_DIR = "data/imagenet"
 CIFAR10_DATA_DIR ="/home/jvrijn/code/rs/my_research_code/data/datasets/ImageNet"  #obfuscate this before releasing
@@ -51,8 +49,7 @@ def main(args):
         time_elapsed = str(datetime.timedelta(seconds=(after_time - before_time)))
         total_num += 1
 
-        print("{}\t{}\t{}\t{:.3}\t{}\t{}".format(
-            i, label, prediction, radius, correct, time_elapsed), file=f, flush=True)
+        print(f"{i}\t{label}\t{prediction}\t{radius:.3}\t{correct}\t{time_elapsed}", file=f, flush=True)
 
     print("sigma %.2f accuracy of smoothed classifier %.4f "%(args.sigma, correct/float(total_num)))
 

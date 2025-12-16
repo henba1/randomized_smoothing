@@ -5,24 +5,6 @@ import torch
 from torch.utils.data import Dataset
 
 
-class UnflattenDataset(Dataset):
-    """Wrapper dataset that unflattens images from experiment_utils format back to C, H, W"""
-    def __init__(self, base_dataset, channels=3, height=32, width=32):
-        self.base_dataset = base_dataset
-        self.channels = channels
-        self.height = height
-        self.width = width
-    
-    def __len__(self):
-        return len(self.base_dataset)
-    
-    def __getitem__(self, idx):
-        x, label = self.base_dataset[idx]
-        if x.dim() == 1 and x.shape[0] == self.channels * self.height * self.width:
-            x = x.view(self.channels, self.height, self.width)
-        return x, label
-
-
 def print_huggingface_device_status(model: torch.nn.Module, model_id: str) -> str:
     """Print and return the actual device where HuggingFace model is located.
 

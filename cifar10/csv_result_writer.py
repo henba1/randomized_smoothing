@@ -81,9 +81,9 @@ class CSVResultWriter:
             "image_id": image_id,
             "original_label": original_label,
             "predicted_class": predicted_class,
-            "tmp_path": "n.a.",
+            "tmp_path": np.nan,
             "epsilon_value": epsilon_value,
-            "smallest_sat_value": "n.a.",
+            "smallest_sat_value": np.nan,
             "total_time": total_time,
             "verifier": self.verifier_string,
         }

@@ -2,8 +2,25 @@ import os
 
 import numpy as np
 import torch
-from sklearn.model_selection import StratifiedShuffleSplit
-from torch.utils.data import Subset
+from torch.utils.data import Dataset
+
+
+class UnflattenDataset(Dataset):
+    """Wrapper dataset that unflattens images from experiment_utils format back to C, H, W"""
+    def __init__(self, base_dataset, channels=3, height=32, width=32):
+        self.base_dataset = base_dataset
+        self.channels = channels
+        self.height = height
+        self.width = width
+    
+    def __len__(self):
+        return len(self.base_dataset)
+    
+    def __getitem__(self, idx):
+        x, label = self.base_dataset[idx]
+        if x.dim() == 1 and x.shape[0] == self.channels * self.height * self.width:
+            x = x.view(self.channels, self.height, self.width)
+        return x, label
 
 
 def print_huggingface_device_status(model: torch.nn.Module, model_id: str) -> str:
@@ -49,7 +66,7 @@ def get_diffusion_model_path_name_tuple(dataset_name: str) -> tuple[str, str]:
     if not os.path.isdir(model_dir):
         raise ValueError(f"Model directory not found: {model_dir}")
 
-    # Find the .pt file in the directory #TODO: ASSUMING ONE FILE IN DIR 
+    # Find the .pt file in the directory #TODO: this assumes only one file in dir
     model_files = [f for f in os.listdir(model_dir) if f.endswith(".pt")]
 
     if len(model_files) == 0:
@@ -83,115 +100,21 @@ def print_onnx_device_status(provider_list: list, device_requested: str) -> str:
     return actual_device
 
 
-def get_balanced_sample(dataset, train_bool: bool = False, seed: int = 42, sample_size: int = 100):
-    """Get a balanced sample from the dataset using StratifiedShuffleSplit.
+def override_args_with_cli(defaults: dict, args) -> dict:
+    """Override default values with command-line arguments if provided.
 
     Args:
-        dataset: The dataset to sample from
-        train_bool: Whether this is a training set (True) or test set (False)
-        seed: Random seed for reproducibility
-        sample_size: Number of samples to select
+        defaults: Dictionary of default parameter values
+        args: Parsed command-line arguments object (or None)
 
     Returns:
-        tuple: (Subset of the dataset, array of original indices)
+        Dictionary with overridden values (same keys as defaults, in same order)
     """
-    torch.manual_seed(seed)
-    np.random.seed(seed)
+    if args is None:
+        return defaults
 
-    # Extract the labels
-    labels = torch.tensor([dataset[i][1] for i in range(len(dataset))])
+    params = defaults.copy()
+    params.update({k: v for k, v in vars(args).items() if v is not None and k in params})
+    return params
 
-    # Use StratifiedShuffleSplit to create balanced subsets
-    if train_bool:
-        splitter = StratifiedShuffleSplit(n_splits=1, train_size=sample_size, random_state=seed)
-        for train_idx, _ in splitter.split(np.zeros(len(labels)), labels):
-            balanced_sample_idx = train_idx
-    else:
-        splitter = StratifiedShuffleSplit(
-            n_splits=1, test_size=sample_size, random_state=seed
-        )
-        for _, test_idx in splitter.split(np.zeros(len(labels)), labels):
-            balanced_sample_idx = test_idx
-
-    # Create a subset of the original dataset using the balanced indices
-    balanced_dataset = Subset(dataset, balanced_sample_idx)
-
-    return balanced_dataset, balanced_sample_idx
-
-
-def get_sample(dataset, seed: int = 42, sample_size: int = 100):
-    """Get a random sample from the dataset without stratification.
-
-    Unlike get_balanced_sample(), this function does not ensure balanced class distribution
-    and simply returns a random subset of the data.
-
-    Args:
-        dataset: The dataset to sample from
-        seed: Random seed for reproducibility
-        sample_size: Number of samples to select
-
-    Returns:
-        tuple: (Subset of the dataset, array of original indices)
-
-    Raises:
-        ValueError: If sample_size exceeds dataset size
-    """
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-
-    # Random sampling without stratification
-    dataset_length = len(dataset)
-    if sample_size > dataset_length:
-        raise ValueError(
-            f"Requested sample size {sample_size} exceeds dataset size {dataset_length}"
-        )
-
-    # Generate random indices
-    all_indices = np.arange(dataset_length)
-    sample_idx = np.random.choice(all_indices, size=sample_size, replace=False)
-
-    # Create subset of original dataset using the sampled indices
-    sampled_dataset = Subset(dataset, sample_idx)
-
-    return sampled_dataset, sample_idx
-
-
-def create_experiment_folder(
-    results_dir: str,
-    safe_classifier_name: str,
-    sigma: float,
-    alpha: float,
-    N0: int,
-    N: int,
-    batch_size: int,
-) -> str:
-    """Create experiment folder for given configuration and return the folder path.
-
-    This function creates a folder structure to organize experiment results by
-    configuration. All files with the same hyperparameters are stored in the
-    same folder, simplifying file naming.
-
-    Args:
-        results_dir: Base results directory
-        safe_classifier_name: Safe classifier name (slashes/hyphens replaced)
-        sigma: Noise level parameter
-        alpha: Failure probability
-        N0: Number of initial samples
-        N: Number of samples for certification
-        batch_size: Batch size for processing
-
-    Returns:
-        str: Path to the experiment folder
-    """
-    # Ensure base results directory exists
-    os.makedirs(results_dir, exist_ok=True)
-
-    experiment_folder_name = (
-        f"{safe_classifier_name}_{sigma}_{alpha}_{N0}_{N}_{batch_size}"
-    )
-    experiment_folder_path = os.path.join(results_dir, experiment_folder_name)
-
-    os.makedirs(experiment_folder_path, exist_ok=True)
-
-    return experiment_folder_path
 

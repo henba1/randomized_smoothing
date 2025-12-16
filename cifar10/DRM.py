@@ -1,17 +1,15 @@
-import os
-
 import torch
 import torch.nn as nn
-
+from pathlib import Path
 from improved_diffusion.script_util import (
-    model_and_diffusion_defaults,
-    create_model_and_diffusion,
     args_to_dict,
+    create_model_and_diffusion,
+    model_and_diffusion_defaults,
 )
-from transformers import AutoModelForImageClassification
 from onnx_classifier import load_onnx_classifier
-from utils import print_huggingface_device_status, get_diffusion_model_path_name_tuple
-
+from transformers import AutoModelForImageClassification
+from pytorch_classifier import PyTorchClassifierWrapper
+from utils import get_diffusion_model_path_name_tuple, print_huggingface_device_status
 
 class Args:
     image_size=32
@@ -34,18 +32,26 @@ class Args:
     use_checkpoint=False
     use_scale_shift_norm=True
 
+#above is from original code, for CIFAR-10, for ImageNet, do an if statement to change the args
+#use config yaml file to change the args of the denoiser
+
 
 class DiffusionRobustModel(nn.Module):
-    def __init__(self, classifier_type="huggingface", classifier_name=None, models_dir=None, dataset_name=None):
+    def __init__(self, classifier_type="huggingface", classifier_name=None, models_dir=None, dataset_name=None, device=None, image_size=None):
         super().__init__()
+        if device is None:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device
+        
+        # instantiate the prepended DDPM
         model, diffusion = create_model_and_diffusion(
             **args_to_dict(Args(), model_and_diffusion_defaults().keys())
         )
         diffusion_model_path, _ = get_diffusion_model_path_name_tuple(dataset_name)
         model.load_state_dict(
-            torch.load(diffusion_model_path, weights_only=True)
+            torch.load(diffusion_model_path, weights_only=True, map_location=device)
         )
-        model.eval().cuda()
+        model.eval().to(device)
 
         self.model = model 
         self.diffusion = diffusion 
@@ -58,30 +64,62 @@ class DiffusionRobustModel(nn.Module):
                 raise ValueError("models_dir must be specified when using ONNX classifier")
             print(f"\n{'='*70}")
             print(f"Loading ONNX classifier: {classifier_name} from {models_dir}")
-            classifier = load_onnx_classifier(classifier_name, models_dir)
-            classifier.eval().cuda()
+            device_str = "cuda" if device.type == "cuda" else "cpu"
+            classifier = load_onnx_classifier(classifier_name, str(models_dir), device=device_str)
+            classifier.eval()
             print(f"{'='*70}\n")
             self.classifier_type = "onnx"
             self.classifier_name = classifier_name
-        else:  # default to huggingface
-            try:
-                model_id = classifier_name
-            except Exception as e:
-                raise ValueError(f"Error loading HuggingFace classifier: {e}. Please check the model ID and if the model is available on HuggingFace.")
+        elif classifier_type == "pytorch":
+            if classifier_name is None:
+                raise ValueError("classifier_name must be specified when using PyTorch classifier")
+            if models_dir is None:
+                raise ValueError("models_dir must be specified when using PyTorch classifier")
+            print(f"\n{'='*70}")
+            print(f"Loading PyTorch classifier: {classifier_name} from {models_dir}")
+            model_path = Path(models_dir) / f"{classifier_name}.pth"
+            if not model_path.exists():
+                available_models = list(Path(models_dir).glob("*.pth"))
+                raise FileNotFoundError(
+                    f"PyTorch model {model_path} not found. "
+                    f"Available models: {[m.name for m in available_models]}"
+                )
+            pytorch_model = torch.load(model_path, map_location=device, weights_only=False)
+            # Handle case where .pth file contains state_dict vs full model
+            if isinstance(pytorch_model, dict) and 'state_dict' in pytorch_model:
+                raise ValueError(
+                    f"Model {model_path} is a state_dict. "
+                    "Please provide a full model (architecture + weights) saved with torch.save(model, ...)"
+                )
+            if not isinstance(pytorch_model, nn.Module):
+                raise ValueError(f"Loaded object from {model_path} is not a torch.nn.Module")
+            if image_size is None:
+                raise ValueError("image_size must be provided when using PyTorch classifier")
+            expected_height = image_size[1] 
+            expected_width = image_size[0] #width
+            classifier = PyTorchClassifierWrapper(pytorch_model, expected_height=expected_height, expected_width=expected_width)
+            classifier.eval().to(device)
+            print(f"{'='*70}\n")
+            self.classifier_type = "pytorch"
+            self.classifier_name = classifier_name
+        else: #HF
+            if classifier_name is None:
+                raise ValueError("classifier_name must be specified when using HuggingFace classifier")
+            
+            model_id = classifier_name
             print(f"\n{'='*70}")
             print(f"Loading HuggingFace classifier: {model_id}")
-            if models_dir:
-                # Load from local directory
-                print(f"Loading from local cache: {models_dir}")
-                os.environ['HF_HOME'] = models_dir
+            
+            try:
+                print(f"Loading from default cache: ~/.cache/huggingface")
                 classifier = AutoModelForImageClassification.from_pretrained(
                     model_id,
                     local_files_only=True
                 )
-            else:
-                # Load remote model from HuggingFace
+            except Exception as e:
+                print(f"Model not found in local cache, downloading from HuggingFace Hub...")
                 classifier = AutoModelForImageClassification.from_pretrained(model_id)
-            classifier.eval().cuda()
+            classifier.eval().to(device)
             print_huggingface_device_status(classifier, model_id)
             print(f"{'='*70}\n")
             self.classifier_type = "huggingface"
@@ -97,15 +135,18 @@ class DiffusionRobustModel(nn.Module):
         if self.classifier_type == "onnx":
             # Use the ONNX model's expected input size
             target_size = (self.classifier.expected_height, self.classifier.expected_width)
+        elif self.classifier_type == "pytorch":
+            # Use the PyTorch model's expected input size
+            target_size = (self.classifier.expected_height, self.classifier.expected_width)
         else:
-            # HuggingFace ViT expects 224x224 as it was trained on ImageNet
+            # HuggingFace ViT expects 224x224 as it was trained on ImageNet, #TODO hardcoded for now
             target_size = (224, 224)
         #upscale the images to the target size
         imgs = torch.nn.functional.interpolate(imgs, target_size, mode='bicubic', antialias=True)
         
-        # Convert back to [0,1] for ONNX models (trained on [0,1] data from JAIR_code)
-        if self.classifier_type == "onnx":
-            imgs = imgs * 0.5 + 0.5  # Convert [-1, 1] to [0, 1]   !!! This is not needed for the hf vit, investigate exactly why before submitting
+        # Convert back to [0,1] for ONNX and PyTorch models (assume trained on [0,1] data)
+        if self.classifier_type in ["onnx", "pytorch"]:
+            imgs = imgs * 0.5 + 0.5  # Convert [-1, 1] to [0, 1]
 
         with torch.no_grad():
             out = self.classifier(imgs)
@@ -113,7 +154,7 @@ class DiffusionRobustModel(nn.Module):
         return out.logits
 
     def denoise(self, x_start, t, multistep=False):
-        t_batch = torch.tensor([t] * len(x_start)).cuda()
+        t_batch = torch.tensor([t] * len(x_start), device=self.device)
 
         noise = torch.randn_like(x_start)
 
@@ -123,7 +164,7 @@ class DiffusionRobustModel(nn.Module):
             if multistep:
                 out = x_t_start
                 for i in range(t)[::-1]:
-                    t_batch = torch.tensor([i] * len(x_start)).cuda()
+                    t_batch = torch.tensor([i] * len(x_start), device=self.device)
                     out = self.diffusion.p_sample(
                         self.model,
                         out,

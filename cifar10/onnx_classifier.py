@@ -4,13 +4,11 @@ This module provides a PyTorch-compatible interface for ONNX models.
 """
 
 import os
-from typing import Optional, Union
 
 import numpy as np
 import onnxruntime as ort
 import torch
 import torch.nn as nn
-
 from utils import print_onnx_device_status
 
 
@@ -20,7 +18,7 @@ class ONNXClassifier(nn.Module):
     as Hugging Face's AutoModelForImageClassification.
     """
     
-    def __init__(self, onnx_path: str, device: str = "cuda", input_name: Optional[str] = None, output_name: Optional[str] = None):
+    def __init__(self, onnx_path: str, device: str = "cuda", input_name: str | None = None, output_name: str | None = None):
         """
         Initialize the ONNX classifier wrapper.
         
@@ -82,14 +80,11 @@ class ONNXClassifier(nn.Module):
         self.output_shape = self.output_details[0].shape
         
         # Extract expected image dimensions from input shape
-        # Typical format: [batch_size, channels, height, width]
         if len(self.input_shape) == 4:
             self.expected_height = self.input_shape[2] if isinstance(self.input_shape[2], int) else 32
             self.expected_width = self.input_shape[3] if isinstance(self.input_shape[3], int) else 32
         else:
-            # Fallback to CIFAR-10 default
-            self.expected_height = 32
-            self.expected_width = 32
+            raise ValueError(f"Input shape {self.input_shape} is not supported")
         
         # Determine number of classes from output shape
         if len(self.output_shape) == 2:
@@ -105,7 +100,7 @@ class ONNXClassifier(nn.Module):
         # Create a dummy logits attribute for compatibility
         self.logits = None
         
-    def forward(self, x: Union[torch.Tensor, np.ndarray]) -> 'ONNXOutput':
+    def forward(self, x: torch.Tensor | np.ndarray) -> 'ONNXOutput':
         """
         Forward pass through the ONNX model.
         
@@ -166,13 +161,14 @@ class ONNXOutput:
         self.logits = logits
 
 
-def load_onnx_classifier(model_name: str, models_dir: str) -> ONNXClassifier:
+def load_onnx_classifier(model_name: str, models_dir: str, device: str = "cuda") -> ONNXClassifier:
     """
     Load an ONNX classifier from the models directory.
     
     Args:
         model_name: Name of the model file (with or without .onnx extension)
         models_dir: Directory containing ONNX models
+        device: Device to run inference on ("cuda" or "cpu"), defaults to "cuda"
         
     Returns:
         ONNXClassifier instance
@@ -191,7 +187,7 @@ def load_onnx_classifier(model_name: str, models_dir: str) -> ONNXClassifier:
             f"Available models: {available_models}"
         )
     
-    return ONNXClassifier(model_path)
+    return ONNXClassifier(model_path, device=device)
 
 
 def list_available_models(models_dir: str) -> list:

@@ -98,9 +98,9 @@ class LossAwareSampler(ScheduleSampler):
         dist.all_gather(timestep_batches, local_ts)
         dist.all_gather(loss_batches, local_losses)
         timesteps = [
-            x.item() for y, bs in zip(timestep_batches, batch_sizes) for x in y[:bs]
+            x.item() for y, bs in zip(timestep_batches, batch_sizes, strict=False) for x in y[:bs]
         ]
-        losses = [x.item() for y, bs in zip(loss_batches, batch_sizes) for x in y[:bs]]
+        losses = [x.item() for y, bs in zip(loss_batches, batch_sizes, strict=False) for x in y[:bs]]
         self.update_with_all_losses(timesteps, losses)
 
     @abstractmethod
@@ -141,7 +141,7 @@ class LossSecondMomentResampler(LossAwareSampler):
         return weights
 
     def update_with_all_losses(self, ts, losses):
-        for t, loss in zip(ts, losses):
+        for t, loss in zip(ts, losses, strict=False):
             if self._loss_counts[t] == self.history_per_term:
                 # Shift out the oldest loss term.
                 self._loss_history[t, :-1] = self._loss_history[t, 1:]

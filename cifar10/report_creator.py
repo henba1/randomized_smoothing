@@ -24,7 +24,7 @@ def create_filtered_report(
         output_file: Path to the output filtered results file
         experiment: Optional Comet ML experiment object for logging
     """
-    with open(input_file, "r") as f_in, open(output_file, "w") as f_out:
+    with open(input_file) as f_in, open(output_file, "w") as f_out:
         for line_idx, line in enumerate(f_in):
             if line_idx == 0:  # Keep header
                 f_out.write(line)
@@ -86,7 +86,7 @@ def create_verona_csv(
         f"{ddpm_model_name}_{sigma}_{alpha}_{N0}_{N}"
     )
 
-    with open(input_file, "r") as f_in, open(output_file, "w", newline="") as f_out:
+    with open(input_file) as f_in, open(output_file, "w", newline="") as f_out:
         csv_writer = csv.DictWriter(
             f_out,
             fieldnames=[

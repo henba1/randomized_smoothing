@@ -99,7 +99,7 @@ def process_result_file(
         try:
             create_filtered_report(result_file, filtered_file, experiment=None)
             input_for_verona = filtered_file
-            print(f"  ✓ Filtered report created")
+            print("  ✓ Filtered report created")
         except Exception as e:
             print(f"  ✗ Error creating filtered report: {e}")
             return False
@@ -118,7 +118,7 @@ def process_result_file(
             N,
             experiment=None,
         )
-        print(f"  ✓ VERONA CSV created")
+        print("  ✓ VERONA CSV created")
         return True
     except Exception as e:
         print(f"  ✗ Error creating VERONA CSV: {e}")

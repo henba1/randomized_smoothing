@@ -4,7 +4,7 @@ Handles all Comet ML operations with centralized error handling.
 """
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
 import comet_ml
 
@@ -19,10 +19,10 @@ class CometTracker:
         model_name: str,
         ddpm_model_name: str,
         project_name: str = "rs-rd",
-        sigma: Optional[float] = None,
-        alpha: Optional[float] = None,
-        N0: Optional[int] = None,
-        N: Optional[int] = None,
+        sigma: float | None = None,
+        alpha: float | None = None,
+        N0: int | None = None,
+        N: int | None = None,
     ) -> None:
         """Initialize Comet ML experiment.
 
@@ -72,7 +72,7 @@ class CometTracker:
             print(f"Warning: Failed to create Comet ML experiment: {e}")
             print("Continuing without Comet ML tracking...")
 
-    def log_parameters(self, parameters: Dict[str, Any]) -> None:
+    def log_parameters(self, parameters: dict[str, Any]) -> None:
         """Log experiment parameters.
 
         Args:
@@ -101,7 +101,7 @@ class CometTracker:
         except Exception as e:
             print(f"Warning: Failed to log metric '{metric_name}' to Comet ML: {e}")
 
-    def log_metrics(self, metrics: Dict[str, Any], step: Optional[int] = None) -> None:
+    def log_metrics(self, metrics: dict[str, Any], step: int | None = None) -> None:
         """Log multiple metrics.
 
         Args:
@@ -131,7 +131,7 @@ class CometTracker:
         except Exception as e:
             print(f"Warning: Failed to log '{key}' to Comet ML: {e}")
 
-    def log_asset(self, file_path: str, file_name: Optional[str] = None) -> None:
+    def log_asset(self, file_path: str, file_name: str | None = None) -> None:
         """Log a file asset.
 
         Args:

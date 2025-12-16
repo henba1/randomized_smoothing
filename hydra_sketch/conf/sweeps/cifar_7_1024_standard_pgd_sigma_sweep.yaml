@@ -1,0 +1,16 @@
+# @package _global_
+
+defaults:
+  - /base/defaults@_global_
+  - override /hydra/launcher: submitit_slurm
+  - override /hydra/sweeper: basic
+  - _self_
+
+# Define the sweep parameters
+# This will create: 2 models (standard, pgd) × 4 sigmas = 8 jobs
+hydra:
+  sweeper:
+    params:
+      +classifier_type: onnx
+      +classifier_name: cifar_7_1024_standard,cifar_7_1024_pgd
+      ++sigma: 0.25,0.5,0.75,1.0

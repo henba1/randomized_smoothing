@@ -1,5 +1,4 @@
 # Basic sweeper configuration for Hydra
-# This is the default sweeper that comes with Hydra
 
 _target_: hydra._internal.core_plugins.basic_sweeper.BasicSweeper
 

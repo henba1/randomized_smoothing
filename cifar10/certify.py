@@ -178,12 +178,10 @@ def main(args=None):
     indices_file = save_original_indices(
         dataset_name=dataset_name,
         original_indices=original_indices,
-        output_dir=RESULTS_DIR,
+        output_dir=experiment_folder,
         sample_size=sample_size,
-        timestamp=timestamp,
         split=split,
     )
-
     tracker.log_asset(str(indices_file))
     
     # Get the timestep t corresponding to noise level sigma

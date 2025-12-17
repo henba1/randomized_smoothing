@@ -1,0 +1,4 @@
+# Basic sweeper configuration for Hydra
+
+_target_: hydra._internal.core_plugins.basic_sweeper.BasicSweeper
+

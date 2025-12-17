@@ -1,20 +1,32 @@
-import comet_ml
-import argparse
+"""
+Hydra-enabled version of certify.py for parameter sweeps and SLURM job scheduling.
+
+Usage:
+    Single run: python certify_hydra.py
+    Override: python certify_hydra.py sigma=0.5 sample_size=200
+    Sweep (local): python certify_hydra.py -m sigma=0.25,0.5,0.75 sample_size=100,200
+    Sweep (SLURM): python certify_hydra.py -m sigma=0.25,0.5,0.75 --config-name certify
+"""
+
 import datetime
 import logging
+import os
+import sys
 import time
+from pathlib import Path
 
 import torch
+from hydra import compose, initialize
+from omegaconf import DictConfig, OmegaConf
+
 from comet_tracker import CometTracker
 from core import Smooth
 from DRM import DiffusionRobustModel
 from csv_result_writer import CSVResultWriter
-
-#torch.manual_seed(0) #TODO ?
 from signal_handler import setup_signal_handler
 from utils import (
     get_diffusion_model_path_name_tuple,
-    override_args_with_cli,
+    get_device_with_diagnostics,
 )
 
 from ada_verona import (
@@ -33,49 +45,28 @@ logging.getLogger("dulwich").setLevel(logging.WARNING)
 logging.getLogger("comet_ml").setLevel(logging.INFO)
 
 
-def main(args=None):
+def main(cfg: DictConfig):
+    """Main function that receives Hydra config."""
+    OmegaConf.set_struct(cfg, False)
+    
     start_time = time.time()
-    from utils import get_device_with_diagnostics
+    
     device = get_device_with_diagnostics()
-    
-    # ---------------------------------------BASIC EXPERIMENT CONFIGURATION -----------------------------------------
-    experiment_type = "certification"
-    dataset_name = "CIFAR-10"
-    split = "test"
-    sample_size = 100
-    random_seed = 42
 
-    sample_correct_predictions = True
-    sample_stratified = False
-    # ----------------------------------------RANDOMIZED SMOOTHING VARIABLES-----------------------------------------
-    sigma = 0.25
-    N0 = 100
-    N = 100000
-    batch_size = 200
-    alpha = 0.001
-    #----------------------------------------CLASSIFIER CONFIGURATION------------------------------------------------
-    classifier_type = "huggingface"
-    classifier_name = "aaraki/vit-base-patch16-224-in21k-finetuned-cifar10"
-    # classifier_type = "pytorch"
-    # classifier_name = "conv_big_best"
-    
-    default_params = {
-        "dataset_name": dataset_name,
-        "sigma": sigma,
-        "sample_size": sample_size,
-        "random_seed": random_seed,
-        "N0": N0,
-        "N": N,
-        "batch_size": batch_size,
-        "alpha": alpha,
-        "sample_correct_predictions": sample_correct_predictions,
-        "sample_stratified": sample_stratified,
-        "classifier_type": classifier_type,
-        "classifier_name": classifier_name,
-    }
-    params = override_args_with_cli(default_params, args)
-    (dataset_name, sigma, sample_size, random_seed, N0, N, batch_size, alpha,
-     sample_correct_predictions, sample_stratified, classifier_type, classifier_name) = params.values()
+    experiment_type = cfg.get("experiment_type", "certification")
+    dataset_name = cfg.dataset_name
+    split = cfg.split
+    sample_size = cfg.sample_size
+    random_seed = cfg.random_seed
+    sigma = cfg.sigma
+    N0 = cfg.N0
+    N = cfg.N
+    batch_size = cfg.batch_size
+    alpha = cfg.alpha
+    sample_correct_predictions = cfg.get("sample_correct_predictions", True)
+    sample_stratified = cfg.get("sample_stratified", cfg.get("stratified", False))
+    classifier_type = cfg.classifier_type
+    classifier_name = cfg.classifier_name
 
     classifier_name_short = classifier_name.split("/")[-1] if classifier_name else "unknown"
 
@@ -91,15 +82,14 @@ def main(args=None):
     num_channels = dataset_config["channels"]
     num_classes = dataset_config["num_classes"]
 
-    # ----------------------------------------DATASET AND MODELS DIRECTORY CONFIGURATION-----------------------------
     DATASET_DIR = get_dataset_dir(dataset_name)
     MODELS_DIR = get_models_dir(dataset_name)
     RESULTS_DIR = get_results_dir(dataset_name)
-    
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     experiment_name = f"{classifier_name_short}_{sigma}_{dataset_name}_{timestamp}"
     _, ddpm_model_name = get_diffusion_model_path_name_tuple(dataset_name)
-    
+
     verifier_string = (
         f"RS_{classifier_name_short}_"
         f"{ddpm_model_name}_{sigma}_{alpha}_{N0}_{N}"
@@ -120,6 +110,7 @@ def main(args=None):
         experiment_type=experiment_type,
         dataset_name=dataset_name,
         timestamp=timestamp,
+        classifier_name=classifier_name_short,
     )
 
     # ----------------------------------------OUTPUT FILES -----------------------------------------------------------
@@ -128,7 +119,7 @@ def main(args=None):
     abstained_df_path = experiment_folder / "abstained_df.csv"
     all_results_df_path = experiment_folder / "all_results_df.csv"
     summary_df_path = experiment_folder / "summary_df.csv"
-    output_file = experiment_folder / f"{experiment_name}_{timestamp}.txt"
+    output_file = experiment_folder / f"{experiment_name}.txt"
 
     csv_writer = CSVResultWriter(
         result_df_path=result_df_path,
@@ -138,7 +129,7 @@ def main(args=None):
         summary_df_path=summary_df_path,
         verifier_string=verifier_string,
     )
-    
+
     tracker.log_parameters({
         "sigma": sigma,
         "sample_size": sample_size,
@@ -151,9 +142,9 @@ def main(args=None):
         "classifier_type": classifier_type,
         "classifier_name": classifier_name
     })
-    
+
     tracker.log_metric("experiment_start_time", start_time)
-    
+
     # Initialize model with specified classifier
     model = DiffusionRobustModel(
         classifier_type=classifier_type,
@@ -174,7 +165,7 @@ def main(args=None):
         image_size=None,
         flatten=False,
     )
-    
+
     indices_file = save_original_indices(
         dataset_name=dataset_name,
         original_indices=original_indices,
@@ -183,7 +174,7 @@ def main(args=None):
         split=split,
     )
     tracker.log_asset(str(indices_file))
-    
+
     # Get the timestep t corresponding to noise level sigma
     target_sigma = sigma * 2
     real_sigma = 0
@@ -218,15 +209,13 @@ def main(args=None):
             "model_name": classifier_name_short,
         }
 
-    # Set up signal handlers for graceful shutdown (after counters are initialized)
     setup_signal_handler(csv_writer, tracker, output_file, get_summary_params)
 
     print(f"Starting certification on {total_samples} samples (seed={random_seed})")
-    
-    # Open txt file for writing
+
     f = open(str(output_file), 'w')
     print("original_idx\tlabel\tpredict\tradius\tcorrect\ttime", file=f, flush=True)
-    
+
     for i in range(len(dataset)):
         original_idx = original_indices[i]  # Get true index
         (x, label) = dataset[i]
@@ -245,7 +234,6 @@ def main(args=None):
         time_elapsed = str(datetime.timedelta(seconds=certification_time))
         current_accuracy = correct / float(total_num)
 
-        # Append to appropriate CSV file based on prediction status
         if prediction == Smooth.MISCLASSIFIED:
             n_misclassified += 1
         elif prediction == Smooth.ABSTAIN:
@@ -274,7 +262,6 @@ def main(args=None):
             "progress_percentage": (total_num / total_samples) * 100
         }, step=total_num)
 
-        # Log individual sample results
         tracker.log_other(f"sample_{original_idx}_result", {
             "original_cifar10_index": original_idx,
             "subset_index": i,
@@ -289,7 +276,7 @@ def main(args=None):
 
         if total_num % 20 == 0:
             print(f"Progress: {total_num}/{total_samples} samples processed ({current_accuracy:.4f} accuracy)")
-        
+
         if total_num % 50 == 0:
             try:
                 csv_writer.log_to_comet(tracker)
@@ -302,7 +289,7 @@ def main(args=None):
 
     final_accuracy = correct / float(total_num)
     print("sigma %.2f accuracy of smoothed classifier %.4f " % (sigma, final_accuracy))
-    
+
     csv_writer.create_summary(
         total_num=total_num,
         correct=correct,
@@ -314,11 +301,10 @@ def main(args=None):
         N=N,
         model_name=classifier_name_short,
     )
-    
+
     end_time = time.time()
     total_duration = end_time - start_time
-    
-    # Log final metrics to Comet 
+
     tracker.log_metrics({
         "final_accuracy": final_accuracy,
         "total_samples_processed": total_num,
@@ -327,7 +313,7 @@ def main(args=None):
         "experiment_end_time": end_time,
         "experiment_duration_seconds": total_duration
     })
-    
+
     print(f"Total experiment duration: {total_duration:.2f} seconds ({datetime.timedelta(seconds=int(total_duration))})")
 
     tracker.log_other("experiment_summary", {
@@ -353,47 +339,26 @@ def main(args=None):
     else:
         print("Experiment completed (Comet ML tracking not avail)")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Predict on many examples')
-    parser.add_argument("--sigma", type=float, default=None, help="noise hyperparameter")
-    parser.add_argument("--sample_size", type=int, default=None, help="number of balanced samples to certify")
-    parser.add_argument("--random_seed", type=int, default=None, help="random seed for reproducibility")
-    parser.add_argument("--N0", type=int, default=None, help="number of samples to use")
-    parser.add_argument("--N", type=int, default=None, help="number of samples to use")
-    parser.add_argument("--batch_size", type=int, default=None, help="batch size")
-    parser.add_argument("--alpha", type=float, default=None, help="failure probability")
-    parser.add_argument("--outfile", type=str, default=None, help="output file")
-    parser.add_argument(
-        "--sample_correct_predictions",
-        type=lambda x: x if isinstance(x, bool) else x.lower() in ("true", "1", "yes", "t"),
-        default=None,
-        help="only certify correctly classified samples",
-    )
-    parser.add_argument(
-        "--sample_stratified",
-        type=lambda x: x if isinstance(x, bool) else x.lower() in ("true", "1", "yes", "t"),
-        default=None,
-        help="use stratified sampling",
-    )
-    parser.add_argument(
-        "--classifier_type",
-        type=str,
-        default=None,
-        choices=["huggingface", "onnx", "pytorch"],
-        help="Type of classifier to use"
-    )
-    parser.add_argument(
-        "--classifier_name",
-        type=str,
-        default=None,
-        help="Name of the classifier model (HuggingFace model ID, ONNX model name, or PyTorch model name without .pth extension)"
-    )
-    parser.add_argument(
-        "--dataset_name",
-        type=str,
-        default=None,
-        help="Name of the dataset (e.g., 'CIFAR-10', 'MNIST', 'ImageNet')"
-    )
 
-    args = parser.parse_args()
-    main(args)
+if __name__ == "__main__":
+    # Hydra entry point
+    # Usage:
+    #   Single run: python certify_hydra.py
+    #   Override: python certify_hydra.py sigma=0.5 sample_size=200
+    #   Sweep: python certify_hydra.py -m sigma=0.25,0.5,0.75 sample_size=100,200
+
+    try:
+        from hydra import main as hydra_main
+
+        @hydra_main(version_base=None, config_path="../hydra_sketch/conf", config_name="certify")
+        def hydra_entry(cfg: DictConfig) -> None:
+            """Hydra entry point - replaces argparse."""
+            main(cfg)
+
+        hydra_entry()
+    except ImportError:
+        print("Error: hydra-core not installed. Install with: pip install hydra-core hydra-submitit-launcher")
+        print("Falling back to manual config loading...")
+        with initialize(config_path="../hydra_sketch/conf", version_base=None):
+            cfg = compose(config_name="certify")
+            main(cfg)

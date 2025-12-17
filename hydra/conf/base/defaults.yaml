@@ -1,0 +1,31 @@
+# Base configuration with common defaults
+# This is the minimal set of defaults that all experiments need
+# @package _global_
+
+dataset_name: "CIFAR-10"
+split: "test"
+
+# Sampling configuration
+sample_size: 300
+random_seed: 5432
+sample_stratified: false
+
+# Certification parameters
+sigma: 0.5
+N0: 100
+N: 100000
+batch_size: 200
+alpha: 0.001
+sample_correct_predictions: true
+
+# Experiment configuration
+experiment_type: "certification"
+
+hydra:
+  job:
+    name: certify_${dataset_name}_${sigma}_${sample_size}
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}_${dataset_name}_sigma_${sigma}_size_${sample_size}
+  sweep:
+    dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: sigma_${sigma}_size_${sample_size}

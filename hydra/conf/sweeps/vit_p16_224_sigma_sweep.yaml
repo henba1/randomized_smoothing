@@ -1,0 +1,15 @@
+# @package _global_
+
+defaults:
+  - /base/defaults@_global_
+  - /models/vit_p16_224@_global_
+  - override /hydra/launcher: submitit_slurm
+  - override /hydra/sweeper: basic
+  - _self_
+
+# Define the sweep parameters
+# This will create: 1 model × 4 sigmas = 4 jobs
+hydra:
+  sweeper:
+    params:
+      ++sigma: 0.25,0.75

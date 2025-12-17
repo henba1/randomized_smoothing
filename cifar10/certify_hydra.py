@@ -10,6 +10,7 @@ Usage:
 
 import datetime
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -25,6 +26,7 @@ from csv_result_writer import CSVResultWriter
 from signal_handler import setup_signal_handler
 from utils import (
     get_diffusion_model_path_name_tuple,
+    get_device_with_diagnostics,
 )
 
 from ada_verona import (
@@ -48,8 +50,8 @@ def main(cfg: DictConfig):
     OmegaConf.set_struct(cfg, False)
     
     start_time = time.time()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    
+    device = get_device_with_diagnostics()
 
     experiment_type = cfg.get("experiment_type", "certification")
     dataset_name = cfg.dataset_name
@@ -211,7 +213,6 @@ def main(cfg: DictConfig):
 
     print(f"Starting certification on {total_samples} samples (seed={random_seed})")
 
-    # Open txt file for writing
     f = open(str(output_file), 'w')
     print("original_idx\tlabel\tpredict\tradius\tcorrect\ttime", file=f, flush=True)
 
@@ -233,7 +234,6 @@ def main(cfg: DictConfig):
         time_elapsed = str(datetime.timedelta(seconds=certification_time))
         current_accuracy = correct / float(total_num)
 
-        # Append to appropriate CSV file based on prediction status
         if prediction == Smooth.MISCLASSIFIED:
             n_misclassified += 1
         elif prediction == Smooth.ABSTAIN:
@@ -262,7 +262,6 @@ def main(cfg: DictConfig):
             "progress_percentage": (total_num / total_samples) * 100
         }, step=total_num)
 
-        # Log individual sample results
         tracker.log_other(f"sample_{original_idx}_result", {
             "original_cifar10_index": original_idx,
             "subset_index": i,
@@ -306,7 +305,6 @@ def main(cfg: DictConfig):
     end_time = time.time()
     total_duration = end_time - start_time
 
-    # Log final metrics to Comet
     tracker.log_metrics({
         "final_accuracy": final_accuracy,
         "total_samples_processed": total_num,

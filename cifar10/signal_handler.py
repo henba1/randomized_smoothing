@@ -1,6 +1,8 @@
 """Signal handler for graceful shutdown and CSV file logging to Comet ML."""
 
 import signal
+import sys
+import traceback
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -21,13 +23,29 @@ def _signal_handler(signum, frame):
             print("Creating summary dataframe with current progress...")
             _csv_writer.create_summary(**_summary_params)
         
+        # Ensure all CSV files are flushed to disk before logging
+        sys.stdout.flush()
+        sys.stderr.flush()
+        
+        # Log all CSV files to Comet ML
         if _csv_writer is not None and _tracker is not None:
+            print("Logging all CSV dataframes to Comet ML...")
             _csv_writer.log_to_comet(_tracker)
+            # Flush Comet ML to ensure uploads are queued
+            if hasattr(_tracker, 'experiment') and _tracker.experiment is not None:
+                try:
+                    _tracker.experiment.flush()
+                    print("Comet ML uploads queued successfully")
+                except Exception as e:
+                    print(f"Warning: Failed to flush Comet ML: {e}")
+        
+        # Log output text file
         if _output_file is not None and _tracker is not None:
             _tracker.log_asset(str(_output_file))
             print(f"Results txt file logged to Comet ML: {_output_file}")
     except Exception as e:
         print(f"Error during graceful shutdown: {e}")
+        traceback.print_exc()
     raise SystemExit(1)
 
 

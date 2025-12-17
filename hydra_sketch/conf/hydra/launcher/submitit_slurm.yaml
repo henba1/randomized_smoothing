@@ -4,7 +4,7 @@ submitit_folder: ${hydra.sweep.dir}/.submitit/${now:%Y-%m-%d_%H-%M-%S}
 
 
 partition: gpu_a100
-gres: "gpu:1"
+gpus_per_node: 1
 cpus_per_task: 18
 mem_gb: 120
 timeout_min: 300
@@ -20,4 +20,3 @@ setup:
   - source /gpfs/home2/jvrijn/miniforge3/etc/profile.d/conda.sh
   - conda activate verona_new
   - cd /home/jvrijn/code/rs/verif/VERONA_rs_rd/rs_rd/randomized_smoothing/cifar10
-

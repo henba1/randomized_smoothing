@@ -35,8 +35,8 @@ logging.getLogger("comet_ml").setLevel(logging.INFO)
 
 def main(args=None):
     start_time = time.time()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    from utils import get_device_with_diagnostics
+    device = get_device_with_diagnostics()
     
     # ---------------------------------------BASIC EXPERIMENT CONFIGURATION -----------------------------------------
     experiment_type = "certification"
@@ -54,10 +54,10 @@ def main(args=None):
     batch_size = 200
     alpha = 0.001
     #----------------------------------------CLASSIFIER CONFIGURATION------------------------------------------------
-    # classifier_type = "huggingface"
-    # classifier_name = "aaraki/vit-base-patch16-224-in21k-finetuned-cifar10"
-    classifier_type = "pytorch"
-    classifier_name = "conv_big_best"
+    classifier_type = "huggingface"
+    classifier_name = "aaraki/vit-base-patch16-224-in21k-finetuned-cifar10"
+    # classifier_type = "pytorch"
+    # classifier_name = "conv_big_best"
     
     default_params = {
         "dataset_name": dataset_name,
@@ -197,15 +197,29 @@ def main(args=None):
     # ----------------------------------------DEFINE SMOOTHED CLASSIFIER --------------------------------------------
     smoothed_classifier = Smooth(model, num_classes, sigma, t, sample_correct_predictions=sample_correct_predictions)
 
-    # Set up signal handlers for graceful shutdown
-    setup_signal_handler(csv_writer, tracker, output_file)
-
     # ----------------------------------------CERTIFICATION PROCESS ------------------------------------------------
     total_num = 0
     correct = 0
     n_misclassified = 0
     n_abstain = 0
     total_samples = len(dataset)
+
+    def get_summary_params():
+        """Get current summary parameters for signal handler."""
+        return {
+            "total_num": total_num,
+            "correct": correct,
+            "n_misclassified": n_misclassified,
+            "n_abstain": n_abstain,
+            "sigma": sigma,
+            "alpha": alpha,
+            "N0": N0,
+            "N": N,
+            "model_name": classifier_name_short,
+        }
+
+    # Set up signal handlers for graceful shutdown (after counters are initialized)
+    setup_signal_handler(csv_writer, tracker, output_file, get_summary_params)
 
     print(f"Starting certification on {total_samples} samples (seed={random_seed})")
     

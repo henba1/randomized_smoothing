@@ -1,4 +1,5 @@
 import os
+import subprocess
 
 import numpy as np
 import torch
@@ -80,6 +81,49 @@ def print_onnx_device_status(provider_list: list, device_requested: str) -> str:
     )
     print(f"{status} ONNX Model Device: {actual_device} (requested: {device_requested})")
     return actual_device
+
+
+def get_device_with_diagnostics() -> torch.device:
+    """Get CUDA device if available, with detailed diagnostics.
+
+    Checks CUDA availability and prints diagnostic information including:
+    - Device availability and count
+    - Device name
+    - CUDA_VISIBLE_DEVICES environment variable
+    - PyTorch version and CUDA compilation info
+    - nvidia-smi output if CUDA is not available but GPU is visible
+
+    Returns:
+        torch.device: CUDA device if available, otherwise CPU device
+    """
+    cuda_available = torch.cuda.is_available()
+    if cuda_available:
+        device = torch.device("cuda")
+        print(f"CUDA is available. Using device: {device}")
+        print(f"CUDA device count: {torch.cuda.device_count()}")
+        print(f"CUDA device name: {torch.cuda.get_device_name(0)}")
+        print(f"CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', 'not set')}")
+    else:
+        device = torch.device("cpu")
+        print(f"WARNING: CUDA is not available. Using device: {device}")
+        print(f"CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', 'not set')}")
+        print(f"PyTorch version: {torch.__version__}")
+        print(f"PyTorch CUDA compiled: {torch.version.cuda if hasattr(torch.version, 'cuda') else 'N/A'}")
+        try:
+            nvidia_smi = subprocess.run(
+                ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if nvidia_smi.returncode == 0:
+                print(f"nvidia-smi output: {nvidia_smi.stdout.strip()}")
+                print("WARNING: GPU is visible via nvidia-smi but PyTorch cannot access it!")
+                print("This may indicate a PyTorch-CUDA version mismatch or missing CUDA libraries.")
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            print("nvidia-smi not available or failed")
+    
+    return device
 
 
 def override_args_with_cli(defaults: dict, args) -> dict:

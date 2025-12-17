@@ -205,3 +205,16 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Hydra outputs and logs
+multirun/
+outputs/
+.hydra/
+.submitit/
+multirun.yaml
+*_log.err
+*_log.out
+*_result.pkl
+*_submitted.pkl
+*_submission.sh
+.submission_file_*.sh

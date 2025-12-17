@@ -32,3 +32,5 @@ setup:
   - conda activate verona_new
   - cd /home/jvrijn/code/rs/verif/VERONA_rs_rd/rs_rd/randomized_smoothing/cifar10
 
+
+

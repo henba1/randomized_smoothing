@@ -84,7 +84,7 @@ def main(cfg: DictConfig):
     MODELS_DIR = get_models_dir(dataset_name)
     RESULTS_DIR = get_results_dir(dataset_name)
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     experiment_name = f"{classifier_name_short}_{sigma}_{dataset_name}_{timestamp}"
     _, ddpm_model_name = get_diffusion_model_path_name_tuple(dataset_name)
 
@@ -108,6 +108,7 @@ def main(cfg: DictConfig):
         experiment_type=experiment_type,
         dataset_name=dataset_name,
         timestamp=timestamp,
+        classifier_name=classifier_name_short,
     )
 
     # ----------------------------------------OUTPUT FILES -----------------------------------------------------------
@@ -116,7 +117,7 @@ def main(cfg: DictConfig):
     abstained_df_path = experiment_folder / "abstained_df.csv"
     all_results_df_path = experiment_folder / "all_results_df.csv"
     summary_df_path = experiment_folder / "summary_df.csv"
-    output_file = experiment_folder / f"{experiment_name}_{timestamp}.txt"
+    output_file = experiment_folder / f"{experiment_name}.txt"
 
     csv_writer = CSVResultWriter(
         result_df_path=result_df_path,
@@ -185,15 +186,28 @@ def main(cfg: DictConfig):
     # ----------------------------------------DEFINE SMOOTHED CLASSIFIER --------------------------------------------
     smoothed_classifier = Smooth(model, num_classes, sigma, t, sample_correct_predictions=sample_correct_predictions)
 
-    # Set up signal handlers for graceful shutdown
-    setup_signal_handler(csv_writer, tracker, output_file)
-
     # ----------------------------------------CERTIFICATION PROCESS ------------------------------------------------
     total_num = 0
     correct = 0
     n_misclassified = 0
     n_abstain = 0
     total_samples = len(dataset)
+
+    def get_summary_params():
+        """Get current summary parameters for signal handler."""
+        return {
+            "total_num": total_num,
+            "correct": correct,
+            "n_misclassified": n_misclassified,
+            "n_abstain": n_abstain,
+            "sigma": sigma,
+            "alpha": alpha,
+            "N0": N0,
+            "N": N,
+            "model_name": classifier_name_short,
+        }
+
+    setup_signal_handler(csv_writer, tracker, output_file, get_summary_params)
 
     print(f"Starting certification on {total_samples} samples (seed={random_seed})")
 

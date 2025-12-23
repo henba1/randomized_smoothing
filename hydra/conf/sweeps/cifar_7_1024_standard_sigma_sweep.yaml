@@ -2,7 +2,7 @@
 
 defaults:
   - /base/defaults@_global_
-  - /models/vit_p16_224@_global_
+  - /models/cifar_7_1024@_global_
   - override /hydra/launcher: submitit_slurm
   - override /hydra/sweeper: basic
   - _self_

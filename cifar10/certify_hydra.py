@@ -350,15 +350,15 @@ if __name__ == "__main__":
     try:
         from hydra import main as hydra_main
 
-        @hydra_main(version_base=None, config_path="../hydra_sketch/conf", config_name="certify")
+        @hydra_main(version_base=None, config_path="../hydra/conf", config_name="certify")
         def hydra_entry(cfg: DictConfig) -> None:
-            """Hydra entry point - replaces argparse."""
+            """Hydra entry point"""
             main(cfg)
 
         hydra_entry()
     except ImportError:
         print("Error: hydra-core not installed. Install with: pip install hydra-core hydra-submitit-launcher")
         print("Falling back to manual config loading...")
-        with initialize(config_path="../hydra_sketch/conf", version_base=None):
+        with initialize(config_path="../hydra/conf", version_base=None):
             cfg = compose(config_name="certify")
             main(cfg)

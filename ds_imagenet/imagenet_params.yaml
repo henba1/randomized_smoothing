@@ -1,0 +1,24 @@
+# Default configuration parameters for ImageNet certification experiments
+
+# Basic experiment configuration
+experiment_type: "certification"
+dataset_name: "ImageNet"
+split: "test"
+
+# Sampling configuration
+sample_size: 100
+random_seed: 42
+sample_correct_predictions: true
+sample_stratified: false
+
+# Randomized smoothing variables
+sigma: 0.25
+N0: 100
+N: 100000
+batch_size: 200
+alpha: 0.001
+
+# Classifier configuration
+classifier_type: "timm"
+classifier_name: "beit_large_patch16_512"
+

@@ -3,15 +3,23 @@ import functools
 import os
 
 import blobfile as bf
+import numpy as np
 import torch as th
 import torch.distributed as dist
 from torch.nn.parallel.distributed import DistributedDataParallel as DDP
 from torch.optim import AdamW
 
-from . import dist_util, logger
-from .fp16_util import MixedPrecisionTrainer
-from .nn import update_ema
-from .resample import LossAwareSampler, UniformSampler
+from . import dist_util
+from shared.diffusion import logger
+from .fp16_util import (
+    make_master_params,
+    master_params_to_model_params,
+    model_grads_to_master_grads,
+    unflatten_master_params,
+    zero_grad,
+)
+from shared.diffusion.nn import update_ema
+from shared.diffusion.resample import LossAwareSampler, UniformSampler
 
 # For ImageNet experiments, this was a good default value.
 # We found that the lg_loss_scale quickly climbed to
@@ -63,18 +71,16 @@ class TrainLoop:
         self.resume_step = 0
         self.global_batch = self.batch_size * dist.get_world_size()
 
+        self.model_params = list(self.model.parameters())
+        self.master_params = self.model_params
+        self.lg_loss_scale = INITIAL_LOG_LOSS_SCALE
         self.sync_cuda = th.cuda.is_available()
 
         self._load_and_sync_parameters()
-        self.mp_trainer = MixedPrecisionTrainer(
-            model=self.model,
-            use_fp16=self.use_fp16,
-            fp16_scale_growth=fp16_scale_growth,
-        )
+        if self.use_fp16:
+            self._setup_fp16()
 
-        self.opt = AdamW(
-            self.mp_trainer.master_params, lr=self.lr, weight_decay=self.weight_decay
-        )
+        self.opt = AdamW(self.master_params, lr=self.lr, weight_decay=self.weight_decay)
         if self.resume_step:
             self._load_optimizer_state()
             # Model was resumed, either due to a restart or a checkpoint
@@ -84,8 +90,7 @@ class TrainLoop:
             ]
         else:
             self.ema_params = [
-                copy.deepcopy(self.mp_trainer.master_params)
-                for _ in range(len(self.ema_rate))
+                copy.deepcopy(self.master_params) for _ in range(len(self.ema_rate))
             ]
 
         if th.cuda.is_available():
@@ -123,7 +128,7 @@ class TrainLoop:
         dist_util.sync_params(self.model.parameters())
 
     def _load_ema_parameters(self, rate):
-        ema_params = copy.deepcopy(self.mp_trainer.master_params)
+        ema_params = copy.deepcopy(self.master_params)
 
         main_checkpoint = find_resume_checkpoint() or self.resume_checkpoint
         ema_checkpoint = find_ema_checkpoint(main_checkpoint, self.resume_step, rate)
@@ -133,7 +138,7 @@ class TrainLoop:
                 state_dict = dist_util.load_state_dict(
                     ema_checkpoint, map_location=dist_util.dev()
                 )
-                ema_params = self.mp_trainer.state_dict_to_master_params(state_dict)
+                ema_params = self._state_dict_to_master_params(state_dict)
 
         dist_util.sync_params(ema_params)
         return ema_params
@@ -149,6 +154,10 @@ class TrainLoop:
                 opt_checkpoint, map_location=dist_util.dev()
             )
             self.opt.load_state_dict(state_dict)
+
+    def _setup_fp16(self):
+        self.master_params = make_master_params(self.model_params)
+        self.model.convert_to_fp16()
 
     def run_loop(self):
         while (
@@ -171,14 +180,14 @@ class TrainLoop:
 
     def run_step(self, batch, cond):
         self.forward_backward(batch, cond)
-        took_step = self.mp_trainer.optimize(self.opt)
-        if took_step:
-            self._update_ema()
-        self._anneal_lr()
+        if self.use_fp16:
+            self.optimize_fp16()
+        else:
+            self.optimize_normal()
         self.log_step()
 
     def forward_backward(self, batch, cond):
-        self.mp_trainer.zero_grad()
+        zero_grad(self.model_params)
         for i in range(0, batch.shape[0], self.microbatch):
             micro = batch[i : i + self.microbatch].to(dist_util.dev())
             micro_cond = {
@@ -211,11 +220,40 @@ class TrainLoop:
             log_loss_dict(
                 self.diffusion, t, {k: v * weights for k, v in losses.items()}
             )
-            self.mp_trainer.backward(loss)
+            if self.use_fp16:
+                loss_scale = 2 ** self.lg_loss_scale
+                (loss * loss_scale).backward()
+            else:
+                loss.backward()
 
-    def _update_ema(self):
+    def optimize_fp16(self):
+        if any(not th.isfinite(p.grad).all() for p in self.model_params):
+            self.lg_loss_scale -= 1
+            logger.log(f"Found NaN, decreased lg_loss_scale to {self.lg_loss_scale}")
+            return
+
+        model_grads_to_master_grads(self.model_params, self.master_params)
+        self.master_params[0].grad.mul_(1.0 / (2 ** self.lg_loss_scale))
+        self._log_grad_norm()
+        self._anneal_lr()
+        self.opt.step()
         for rate, params in zip(self.ema_rate, self.ema_params, strict=False):
-            update_ema(params, self.mp_trainer.master_params, rate=rate)
+            update_ema(params, self.master_params, rate=rate)
+        master_params_to_model_params(self.model_params, self.master_params)
+        self.lg_loss_scale += self.fp16_scale_growth
+
+    def optimize_normal(self):
+        self._log_grad_norm()
+        self._anneal_lr()
+        self.opt.step()
+        for rate, params in zip(self.ema_rate, self.ema_params, strict=False):
+            update_ema(params, self.master_params, rate=rate)
+
+    def _log_grad_norm(self):
+        sqsum = 0.0
+        for p in self.master_params:
+            sqsum += (p.grad ** 2).sum().item()
+        logger.logkv_mean("grad_norm", np.sqrt(sqsum))
 
     def _anneal_lr(self):
         if not self.lr_anneal_steps:
@@ -228,10 +266,12 @@ class TrainLoop:
     def log_step(self):
         logger.logkv("step", self.step + self.resume_step)
         logger.logkv("samples", (self.step + self.resume_step + 1) * self.global_batch)
+        if self.use_fp16:
+            logger.logkv("lg_loss_scale", self.lg_loss_scale)
 
     def save(self):
         def save_checkpoint(rate, params):
-            state_dict = self.mp_trainer.master_params_to_state_dict(params)
+            state_dict = self._master_params_to_state_dict(params)
             if dist.get_rank() == 0:
                 logger.log(f"saving model {rate}...")
                 if not rate:
@@ -241,7 +281,7 @@ class TrainLoop:
                 with bf.BlobFile(bf.join(get_blob_logdir(), filename), "wb") as f:
                     th.save(state_dict, f)
 
-        save_checkpoint(0, self.mp_trainer.master_params)
+        save_checkpoint(0, self.master_params)
         for rate, params in zip(self.ema_rate, self.ema_params, strict=False):
             save_checkpoint(rate, params)
 
@@ -253,6 +293,24 @@ class TrainLoop:
                 th.save(self.opt.state_dict(), f)
 
         dist.barrier()
+
+    def _master_params_to_state_dict(self, master_params):
+        if self.use_fp16:
+            master_params = unflatten_master_params(
+                self.model.parameters(), master_params
+            )
+        state_dict = self.model.state_dict()
+        for i, (name, _value) in enumerate(self.model.named_parameters()):
+            assert name in state_dict
+            state_dict[name] = master_params[i]
+        return state_dict
+
+    def _state_dict_to_master_params(self, state_dict):
+        params = [state_dict[name] for name, _ in self.model.named_parameters()]
+        if self.use_fp16:
+            return make_master_params(params)
+        else:
+            return params
 
 
 def parse_resume_step_from_filename(filename):
@@ -271,9 +329,7 @@ def parse_resume_step_from_filename(filename):
 
 
 def get_blob_logdir():
-    # You can change this to be a separate path to save checkpoints to
-    # a blobstore or some external drive.
-    return logger.get_dir()
+    return os.environ.get("DIFFUSION_BLOB_LOGDIR", logger.get_dir())
 
 
 def find_resume_checkpoint():

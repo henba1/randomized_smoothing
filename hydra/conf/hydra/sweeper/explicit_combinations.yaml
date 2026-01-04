@@ -1,0 +1,10 @@
+# hydra sweeper for explicit parameter combinations
+# Uses hydra-list-sweeper plugin for explicit parameter combinations
+# See: https://github.com/ALRhub/hydra_list_sweeper
+
+_target_: hydra_plugins.list_sweeper_plugin.list_sweeper.ListSweeper
+
+grid_params: {}
+list_params: {}
+ablative_params: []
+

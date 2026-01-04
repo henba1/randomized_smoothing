@@ -1,0 +1,45 @@
+# @package _global_
+
+defaults:
+  - /base/defaults@_global_
+  - /models/vit_p16_224@_global_
+  - override /hydra/launcher: submitit_slurm
+  - override /hydra/sweeper: explicit_combinations
+  - _self_
+
+# Default parameters: sigma=0.25, alpha=0.001, N0=100, N=100000
+sigma: 0.25
+alpha: 0.001
+N0: 100
+N: 100000
+
+hydra:
+  sweeper:
+    # Default: sigma=0.25, alpha=0.001, N0=100, N=100000
+    # Using ablative_params for explicit combinations
+    # Runs 1-2: N0 sweep (30, 1000) with N=100000, alpha=0.001
+    # Runs 3-5: N sweep (1000, 10000, 500000) with N0=100, alpha=0.001  
+    # Runs 6-7: alpha sweep (0.0001, 0.01) with N0=100, N=100000
+    ablative_params:
+      - N0: 30
+        N: 100000
+        alpha: 0.001
+      - N0: 1000
+        N: 100000
+        alpha: 0.001
+      - N0: 100
+        N: 1000
+        alpha: 0.001
+      - N0: 100
+        N: 10000
+        alpha: 0.001
+      - N0: 100
+        N: 500000
+        alpha: 0.001
+      - N0: 100
+        N: 100000
+        alpha: 0.0001
+      - N0: 100
+        N: 100000
+        alpha: 0.01
+

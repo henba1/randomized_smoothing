@@ -6,12 +6,12 @@ dataset_name: "CIFAR-10"
 split: "test"
 
 # Sampling configuration
-sample_size: 10000
-random_seed: 111
+sample_size: 300
+random_seed: 5432
 sample_stratified: false
 
 # Certification parameters
-sigma: 0.5
+sigma: 0.25
 N0: 100
 N: 100000
 batch_size: 1000

@@ -10,7 +10,7 @@ mem_gb: 120
 timeout_min: 1200
 
 
-name: certify_${hydra.job.name}
+name: certify_imagenet_${hydra.job.name}
 comment: "Hydra certification sweep"
 
 

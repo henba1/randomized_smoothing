@@ -1,10 +1,7 @@
 """ImageNet certification wrapper - loads defaults from YAML and calls shared certify function."""
 
-import sys
 import yaml
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.certify import main, create_argument_parser
 

@@ -1,9 +1,5 @@
-import sys
 import torch
 import torch.nn as nn
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from improved_diffusion.script_util import (
     args_to_dict,

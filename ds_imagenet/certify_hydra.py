@@ -1,10 +1,5 @@
 """ImageNet Hydra certification wrapper."""
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from hydra import main as hydra_main
 from omegaconf import DictConfig
 

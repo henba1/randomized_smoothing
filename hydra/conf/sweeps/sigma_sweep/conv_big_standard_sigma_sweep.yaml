@@ -1,0 +1,14 @@
+# @package _global_
+
+defaults:
+  - /base/defaults@_global_
+  - /models/conv_big@_global_
+  - override /hydra/launcher: submitit_slurm
+  - override /hydra/sweeper: basic
+  - _self_
+
+
+hydra:
+  sweeper:
+    params:
+      ++sigma: 0.25,0.5,1.0

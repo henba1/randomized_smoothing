@@ -1,0 +1,6 @@
+# @package _global_
+# Certification experiment configuration for CIFAR-10
+defaults:
+  - base/defaults
+  - override hydra/launcher: submitit_slurm_cifar10
+

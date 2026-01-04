@@ -10,7 +10,7 @@ mem_gb: 120
 timeout_min: 1200
 
 
-name: certify_${hydra.job.name}
+name: certify_cifar10_${hydra.job.name}
 comment: "Hydra certification sweep"
 
 
@@ -20,3 +20,4 @@ setup:
   - source /gpfs/home2/jvrijn/miniforge3/etc/profile.d/conda.sh
   - conda activate verona_new
   - cd /home/jvrijn/code/rs/verif/VERONA_rs_rd/rs_rd/randomized_smoothing/ds_cifar10
+

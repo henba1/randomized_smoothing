@@ -1,0 +1,4 @@
+# @package _global_
+
+classifier_type: onnx
+classifier_name: resnet_4b_standard

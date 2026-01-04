@@ -1,0 +1,6 @@
+# @package _global_
+# Certification experiment configuration for ImageNet
+defaults:
+  - base/defaults_imagenet
+  - override hydra/launcher: submitit_slurm_imagenet
+

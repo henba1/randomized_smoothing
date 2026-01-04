@@ -1,26 +1,25 @@
-# Base configuration with common defaults
-# This is the minimal set of defaults that all experiments need
+# Base configuration for ImageNet experiments
 # @package _global_
 
-dataset_name: "CIFAR-10"
+dataset_name: "ImageNet"
 split: "test"
 
 # Sampling configuration
-sample_size: 300
-random_seed: 5432
+sample_size: 100
+random_seed: 42
 sample_stratified: false
 
 # Certification parameters
 sigma: 0.25
 N0: 100
 N: 100000
-batch_size: 1000
+batch_size: 200
 alpha: 0.001
 sample_correct_predictions: true
 
 # Classifier configuration
-classifier_type: "huggingface"
-classifier_name: "aaraki/vit-base-patch16-224-in21k-finetuned-cifar10"
+classifier_type: "timm"
+classifier_name: "beit_large_patch16_512"
 
 # Experiment configuration
 experiment_type: "certification"
@@ -33,3 +32,4 @@ hydra:
   sweep:
     dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
     subdir: sigma_${sigma}_size_${sample_size}
+

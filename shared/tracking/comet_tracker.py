@@ -52,6 +52,14 @@ class CometTracker:
             return
 
         try:
+            # Create experiment config with name only
+            experiment_config = comet_ml.ExperimentConfig(name=experiment_name)
+            self.experiment = comet_ml.start(
+                project_name=project_name,
+                experiment_config=experiment_config,
+            )
+            
+            # Build tags list and add them after experiment creation
             tags = ["certification", f"{dataset_name}", f"{model_name}", f"{ddpm_model_name}"]
             if experiment_tag is not None:
                 tags.append(experiment_tag)
@@ -63,15 +71,10 @@ class CometTracker:
                 tags.append(f"N0={N0}")
             if N is not None:
                 tags.append(f"N={N}")
-
-            experiment_config = comet_ml.ExperimentConfig(
-                name=experiment_name, tags=tags
-            )
-            self.experiment = comet_ml.start(
-                project_name=project_name,
-                experiment_config=experiment_config,
-            )
+            
+            self.experiment.add_tags(tags)
             print(f"Comet ML experiment created: {self.experiment.url}")
+            print(f"Tags added: {tags}")
         except Exception as e:
             print(f"Warning: Failed to create Comet ML experiment: {e}")
             print("Continuing without Comet ML tracking...")

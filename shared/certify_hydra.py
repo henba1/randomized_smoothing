@@ -55,6 +55,7 @@ def main(cfg: DictConfig):
     alpha = cfg.alpha
     sample_correct_predictions = cfg.get("sample_correct_predictions", True)
     sample_stratified = cfg.get("sample_stratified", cfg.get("stratified", False))
+    use_base_predict = cfg.get("use_base_predict", False)
     classifier_type = cfg.classifier_type
     classifier_name = cfg.classifier_name
 
@@ -129,7 +130,8 @@ def main(cfg: DictConfig):
         "alpha": alpha,
         "dataset": dataset_name,
         "classifier_type": classifier_type,
-        "classifier_name": classifier_name
+        "classifier_name": classifier_name,
+        "use_base_predict": use_base_predict,
     })
 
     tracker.log_metric("experiment_start_time", start_time)
@@ -210,24 +212,29 @@ def main(cfg: DictConfig):
 
     setup_signal_handler(csv_writer, tracker, output_file, get_summary_params)
 
-    print(f"Starting certification on {total_samples} samples (seed={random_seed})")
+    mode_str = "base prediction" if use_base_predict else "certification"
+    print(f"Starting {mode_str} on {total_samples} samples (seed={random_seed})")
 
     f = open(str(output_file), 'w')
     print("original_idx\tlabel\tpredict\tradius\tcorrect\ttime", file=f, flush=True)
 
     # Dynamic field name for Comet logging based on dataset
     index_field_name = f"original_{dataset_name.lower().replace('-', '_')}_index"
-
+    
     for i in range(len(dataset)):
         original_idx = original_indices[i]
         (x, label) = dataset[i]
         x = x.to(device)
-
+        
         before_time = time.time()
-        prediction, radius = smoothed_classifier.certify(x, N0, N, alpha, batch_size, label=label)
+        if use_base_predict:
+            prediction = smoothed_classifier.base_predict(x)
+            radius = 0.0
+        else:
+            prediction, radius = smoothed_classifier.certify(x, N0, N, alpha, batch_size, label=label)
         after_time = time.time()
-
-        certification_time = 0.0 if prediction == Smooth.MISCLASSIFIED else (after_time - before_time)
+        
+        certification_time = 0.0 if (not use_base_predict and prediction == Smooth.MISCLASSIFIED) else (after_time - before_time)
 
         correct += int(prediction == label)
         total_num += 1
@@ -235,10 +242,11 @@ def main(cfg: DictConfig):
         time_elapsed = str(datetime.timedelta(seconds=certification_time))
         current_accuracy = correct / float(total_num)
 
-        if prediction == Smooth.MISCLASSIFIED:
-            n_misclassified += 1
-        elif prediction == Smooth.ABSTAIN:
-            n_abstain += 1
+        if not use_base_predict:
+            if prediction == Smooth.MISCLASSIFIED:
+                n_misclassified += 1
+            elif prediction == Smooth.ABSTAIN:
+                n_abstain += 1
 
         csv_writer.append_result(
             image_id=original_idx,
@@ -289,7 +297,10 @@ def main(cfg: DictConfig):
     f.close()
 
     final_accuracy = correct / float(total_num)
-    print("sigma %.2f accuracy of smoothed classifier %.4f " % (sigma, final_accuracy))
+    if use_base_predict:
+        print("clean accuracy of base classifier %.4f " % final_accuracy)
+    else:
+        print("sigma %.2f accuracy of smoothed classifier %.4f " % (sigma, final_accuracy))
 
     csv_writer.create_summary(
         total_num=total_num,

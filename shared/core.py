@@ -98,6 +98,75 @@ class Smooth:
         else:
             return top2[0]
 
+    def base_predict(self, x: torch.tensor) -> int:
+        """Direct prediction on clean input without diffusion denoising or MC sampling.
+        This method computes the clean accuracy by calling the base classifier directly
+        on the input without any smoothing or denoising steps.
+        :param x: the input [channel x height x width]
+        :return: the predicted class
+        """
+        self.base_classifier.eval()
+        with torch.no_grad():
+            # Add batch dimension: [channel x height x width] -> [1 x channel x height x width]
+            x_batch = x.unsqueeze(0)
+            
+            # Check if base_classifier is a DiffusionRobustModel (has classifier attribute)
+            # If so, call the underlying classifier directly without diffusion
+            if hasattr(self.base_classifier, "classifier"):
+                # This is a DiffusionRobustModel - call classifier directly
+                classifier = self.base_classifier.classifier
+                classifier_type = getattr(self.base_classifier, "classifier_type", None)
+                
+                # Preprocess input similar to DiffusionRobustModel.forward but skip denoising
+                # Input x is in [0,1] range, keep it as is for preprocessing
+                
+                # Determine target size based on classifier type
+                if classifier_type == "onnx":
+                    target_size = (classifier.expected_height, classifier.expected_width)
+                elif classifier_type == "pytorch":
+                    target_size = (classifier.expected_height, classifier.expected_width)
+                elif classifier_type == "timm":
+                    cfg = getattr(classifier, "default_cfg", {}) or {}
+                    input_size = cfg.get("input_size", (3, 512, 512))
+                    target_size = (input_size[1], input_size[2])
+                else:  # huggingface or default
+                    target_size = (224, 224)
+                
+                # Resize to target size (input is in [0,1] range)
+                imgs = torch.nn.functional.interpolate(
+                    x_batch, target_size, mode="bicubic", antialias=True
+                )
+    
+                if classifier_type == "huggingface":
+                    #https://huggingface.co/aaraki/vit-base-patch16-224-in21k-finetuned-cifar10/blob/main/preprocessor_config.json
+                    imgs = imgs * 2 - 1
+                elif classifier_type == "timm":
+                    #https://huggingface.co/timm/beit_large_patch16_512.in22k_ft_in22k_in1k
+                    imgs = imgs * 2 - 1
+                # else: ONNX/PyTorch keep [0,1]
+                
+                # Call classifier directly
+                out = classifier(imgs)
+                prediction = out.logits.argmax(1).item()
+            else:
+                # Regular classifier - call directly (may need t parameter)
+                # Try calling without t first, fall back to with t if needed
+                try:
+                    out = self.base_classifier(x_batch)
+                    if hasattr(out, "logits"):
+                        prediction = out.logits.argmax(1).item()
+                    else:
+                        prediction = out.argmax(1).item()
+                except TypeError:
+                    # Classifier requires t parameter, use t=0 for clean prediction
+                    out = self.base_classifier(x_batch, 0)
+                    if hasattr(out, "logits"):
+                        prediction = out.logits.argmax(1).item()
+                    else:
+                        prediction = out.argmax(1).item()
+            
+            return prediction
+
     def _sample_noise(self, x: torch.tensor, num: int, batch_size) -> np.ndarray:
         """Sample the base classifier's prediction under noisy corruptions of the input x.
         :param x: the input [channel x width x height]

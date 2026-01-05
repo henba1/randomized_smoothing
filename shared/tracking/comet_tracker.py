@@ -23,6 +23,7 @@ class CometTracker:
         alpha: float | None = None,
         N0: int | None = None,
         N: int | None = None,
+        experiment_tag: str | None = None,
     ) -> None:
         """Initialize Comet ML experiment.
 
@@ -36,6 +37,7 @@ class CometTracker:
             alpha: Failure probability for tagging
             N0: Number of samples for initial prediction for tagging
             N: Number of samples for certification for tagging
+            experiment_tag: Optional experiment tag to add to tags list
 
         Returns:
             None (sets self.experiment to None if tracking fails)
@@ -51,6 +53,8 @@ class CometTracker:
 
         try:
             tags = ["certification", f"{dataset_name}", f"{model_name}", f"{ddpm_model_name}"]
+            if experiment_tag is not None:
+                tags.append(experiment_tag)
             if sigma is not None:
                 tags.append(f"sigma={sigma}")
             if alpha is not None:

@@ -10,4 +10,5 @@ defaults:
 use_base_predict: true
 random_seed: 5432
 sample_size: 300
+experiment_tag: "base_predict"
 

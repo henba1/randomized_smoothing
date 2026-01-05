@@ -85,6 +85,7 @@ def main(cfg: DictConfig):
         f"{ddpm_model_name}_{sigma}_{alpha}_{N0}_{N}"
     )
 
+    experiment_tag = cfg.get("experiment_tag", None)
     tracker = CometTracker(
         experiment_name,
         dataset_name,
@@ -94,6 +95,7 @@ def main(cfg: DictConfig):
         alpha=alpha,
         N0=N0,
         N=N,
+        experiment_tag=experiment_tag,
     )
     experiment_folder = create_experiment_directory(
         results_dir=RESULTS_DIR,
@@ -101,6 +103,7 @@ def main(cfg: DictConfig):
         dataset_name=dataset_name,
         timestamp=timestamp,
         classifier_name=classifier_name_short,
+        experiment_tag=experiment_tag,
     )
 
     # Output files

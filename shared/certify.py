@@ -65,6 +65,7 @@ def main(args=None, defaults=None):
     alpha = defaults.get("alpha", 0.001)
     classifier_type = defaults.get("classifier_type", "huggingface")
     classifier_name = defaults.get("classifier_name")
+    experiment_tag = defaults.get("experiment_tag", None)
     
     default_params = {
         "dataset_name": dataset_name,
@@ -133,6 +134,7 @@ def main(args=None, defaults=None):
         alpha=alpha,
         N0=N0,
         N=N,
+        experiment_tag=experiment_tag,
     )
     experiment_folder = create_experiment_directory(
         results_dir=RESULTS_DIR,
@@ -140,6 +142,7 @@ def main(args=None, defaults=None):
         dataset_name=dataset_name,
         timestamp=timestamp,
         classifier_name=classifier_name_short,
+        experiment_tag=experiment_tag,
     )
     
     # Output files

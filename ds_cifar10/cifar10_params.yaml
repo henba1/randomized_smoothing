@@ -22,3 +22,5 @@ alpha: 0.001
 classifier_type: "huggingface"
 classifier_name: "aaraki/vit-base-patch16-224-in21k-finetuned-cifar10"
 
+#experiment tracking
+experiment_tag: "default"

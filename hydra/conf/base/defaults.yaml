@@ -10,6 +10,9 @@ sample_size: 300
 random_seed: 5432
 sample_stratified: false
 
+# compute "clean accuracy"
+use_base_predict: false
+
 # Certification parameters
 sigma: 0.25
 N0: 100

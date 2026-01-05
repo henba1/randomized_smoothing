@@ -1,0 +1,13 @@
+# @package _global_
+# Sets use_base_predict: True to compute clean accuracy
+
+defaults:
+  - /base/defaults@_global_
+  - /models/vit_p16_224@_global_
+  - override /hydra/launcher: submitit_slurm_cifar10
+  - _self_
+
+use_base_predict: true
+random_seed: 5432
+sample_size: 300
+

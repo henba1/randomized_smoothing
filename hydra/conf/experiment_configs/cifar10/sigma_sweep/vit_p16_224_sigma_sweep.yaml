@@ -7,6 +7,9 @@ defaults:
   - override /hydra/sweeper: basic
   - _self_
 
+random_seed: 5432
+sample_size: 300
+
 hydra:
   sweeper:
     params:

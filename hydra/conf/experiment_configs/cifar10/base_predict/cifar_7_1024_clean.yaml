@@ -1,13 +1,13 @@
 # @package _global_
+# Sets use_base_predict: True to compute clean accuracy
 
 defaults:
   - /base/defaults@_global_
   - /models/cifar_7_1024@_global_
   - override /hydra/launcher: submitit_slurm_cifar10
-  - override /hydra/sweeper: basic
   - _self_
 
-hydra:
-  sweeper:
-    params:
-      ++sigma: 0.25,0.5,1.0
+use_base_predict: true
+random_seed: 5432
+sample_size: 300
+

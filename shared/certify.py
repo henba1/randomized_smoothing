@@ -237,10 +237,13 @@ def main(args=None, defaults=None):
     correct = 0
     n_misclassified = 0
     n_abstain = 0
+    sum_certification_time = 0.0
     total_samples = len(dataset)
     
     def get_summary_params():
         """Get current summary parameters for signal handler."""
+        current_time = time.time()
+        current_total_duration = current_time - start_time
         return {
             "total_num": total_num,
             "correct": correct,
@@ -251,6 +254,8 @@ def main(args=None, defaults=None):
             "N0": N0,
             "N": N,
             "model_name": classifier_name_short,
+            "total_duration": current_total_duration,
+            "sum_certification_time": sum_certification_time,
         }
     
     setup_signal_handler(csv_writer, tracker, output_file, get_summary_params)
@@ -277,7 +282,8 @@ def main(args=None, defaults=None):
             prediction, radius = smoothed_classifier.certify(x, N0, N, alpha, batch_size, label=label)
         after_time = time.time()
         
-        certification_time = 0.0 if (not use_base_predict and prediction == Smooth.MISCLASSIFIED) else (after_time - before_time)
+        certification_time = 0.0 if (prediction == Smooth.MISCLASSIFIED) else (after_time - before_time)
+        sum_certification_time += certification_time
         
         correct += int(prediction == label)
         total_num += 1
@@ -344,6 +350,8 @@ def main(args=None, defaults=None):
         print("clean accuracy of base classifier %.4f " % final_accuracy)
     else:
         print("sigma %.2f accuracy of smoothed classifier %.4f " % (sigma, final_accuracy))
+    end_time = time.time()
+    total_duration = end_time - start_time
     
     csv_writer.create_summary(
         total_num=total_num,
@@ -355,10 +363,11 @@ def main(args=None, defaults=None):
         N0=N0,
         N=N,
         model_name=classifier_name_short,
+        total_duration=total_duration,
+        sum_certification_time=sum_certification_time,
     )
     
-    end_time = time.time()
-    total_duration = end_time - start_time
+
     
     tracker.log_metrics({
         "final_accuracy": final_accuracy,

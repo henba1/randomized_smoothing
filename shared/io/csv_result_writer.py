@@ -113,6 +113,8 @@ class CSVResultWriter:
         N0: int,
         N: int,
         model_name: str,
+        total_duration: float = 0.0,
+        sum_certification_time: float = 0.0,
     ) -> None:
         """Create and save summary dataframe.
 
@@ -126,6 +128,8 @@ class CSVResultWriter:
             N0: Number of noise samples for initial prediction
             N: Number of noise samples for certification
             model_name: Classifier model name
+            total_duration: Total experiment duration in seconds
+            sum_certification_time: Sum of all individual certification times in seconds
         """
         # Overall accuracy accounting for misclassifications
         overall_accuracy = correct / float(total_num) if total_num > 0 else 0.0
@@ -150,6 +154,8 @@ class CSVResultWriter:
             "n_correct": [correct],
             "n_misclassified": [n_misclassified],
             "n_abstain": [n_abstain],
+            "total_duration_seconds": [total_duration],
+            "sum_certification_time_seconds": [sum_certification_time],
         }
         summary_df = pd.DataFrame(summary_data)
         summary_df.to_csv(self.summary_df_path, index=False)

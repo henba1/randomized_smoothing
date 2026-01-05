@@ -229,83 +229,122 @@ def main(cfg: DictConfig):
     # Dynamic field name for Comet logging based on dataset
     index_field_name = f"original_{dataset_name.lower().replace('-', '_')}_index"
     
-    for i in range(len(dataset)):
-        original_idx = original_indices[i]
-        (x, label) = dataset[i]
-        x = x.to(device)
+    try:
+        for i in range(len(dataset)):
+            original_idx = original_indices[i]
+            (x, label) = dataset[i]
+            x = x.to(device)
+            
+            before_time = time.time()
+            if use_base_predict:
+                prediction = smoothed_classifier.base_predict(x)
+                radius = 0.0
+            else:
+                prediction, radius = smoothed_classifier.certify(x, N0, N, alpha, batch_size, label=label)
+            after_time = time.time()
+            
+            certification_time = 0.0 if (prediction == Smooth.MISCLASSIFIED) else (after_time - before_time)
+            sum_certification_time += certification_time
+
+            correct += int(prediction == label)
+            total_num += 1
+
+            time_elapsed = str(datetime.timedelta(seconds=certification_time))
+            current_accuracy = correct / float(total_num)
+
+            if not use_base_predict:
+                if prediction == Smooth.MISCLASSIFIED:
+                    n_misclassified += 1
+                elif prediction == Smooth.ABSTAIN:
+                    n_abstain += 1
+
+            csv_writer.append_result(
+                image_id=original_idx,
+                original_label=label,
+                predicted_class=prediction,
+                epsilon_value=radius,
+                total_time=time_elapsed,
+                prediction_status=prediction,
+            )
+
+            tracker.log_metrics({
+                index_field_name: original_idx,
+                "subset_index": i,
+                "prediction": prediction,
+                "true_label": label,
+                "radius": radius,
+                "correct": correct,
+                "total_processed": total_num,
+                "current_accuracy": current_accuracy,
+                "sample_correct_predictions": int(sample_correct_predictions),
+                "certification_time_seconds": certification_time,
+                "progress_percentage": (total_num / total_samples) * 100
+            }, step=total_num)
+
+            tracker.log_other(f"sample_{original_idx}_result", {
+                index_field_name: original_idx,
+                "subset_index": i,
+                "true_label": label,
+                "prediction": prediction,
+                "radius": radius,
+                "correct": prediction == label,
+                "time_elapsed": time_elapsed
+            })
+
+            print(f"{original_idx}\t{label}\t{prediction}\t{radius:.3}\t{correct}\t{time_elapsed}", file=f, flush=True)
+
+            if total_num % 20 == 0:
+                print(f"Progress: {total_num}/{total_samples} samples processed ({current_accuracy:.4f} accuracy)")
+
+            if total_num % 50 == 0:
+                try:
+                    # Update summary periodically to ensure it exists even if process is killed
+                    current_time = time.time()
+                    current_total_duration = current_time - start_time
+                    csv_writer.create_summary(
+                        total_num=total_num,
+                        correct=correct,
+                        n_misclassified=n_misclassified,
+                        n_abstain=n_abstain,
+                        sigma=sigma,
+                        alpha=alpha,
+                        N0=N0,
+                        N=N,
+                        model_name=classifier_name_short,
+                        total_duration=current_total_duration,
+                        sum_certification_time=sum_certification_time,
+                    )
+                    csv_writer.log_to_comet(tracker)
+                    tracker.log_asset(str(output_file))
+                    print(f"Periodic backup: CSV files and txt file logged to Comet ML (sample {total_num})")
+                except Exception as e:
+                    print(f"Warning: Failed to log CSV files to Comet ML: {e}")
+    finally:
+        # Ensure file is closed and summary is created even if loop is interrupted
+        f.close()
         
-        before_time = time.time()
-        if use_base_predict:
-            prediction = smoothed_classifier.base_predict(x)
-            radius = 0.0
-        else:
-            prediction, radius = smoothed_classifier.certify(x, N0, N, alpha, batch_size, label=label)
-        after_time = time.time()
-        
-        certification_time = 0.0 if (prediction == Smooth.MISCLASSIFIED) else (after_time - before_time)
-        sum_certification_time += certification_time
-
-        correct += int(prediction == label)
-        total_num += 1
-
-        time_elapsed = str(datetime.timedelta(seconds=certification_time))
-        current_accuracy = correct / float(total_num)
-
-        if not use_base_predict:
-            if prediction == Smooth.MISCLASSIFIED:
-                n_misclassified += 1
-            elif prediction == Smooth.ABSTAIN:
-                n_abstain += 1
-
-        csv_writer.append_result(
-            image_id=original_idx,
-            original_label=label,
-            predicted_class=prediction,
-            epsilon_value=radius,
-            total_time=time_elapsed,
-            prediction_status=prediction,
-        )
-
-        tracker.log_metrics({
-            index_field_name: original_idx,
-            "subset_index": i,
-            "prediction": prediction,
-            "true_label": label,
-            "radius": radius,
-            "correct": correct,
-            "total_processed": total_num,
-            "current_accuracy": current_accuracy,
-            "sample_correct_predictions": int(sample_correct_predictions),
-            "certification_time_seconds": certification_time,
-            "progress_percentage": (total_num / total_samples) * 100
-        }, step=total_num)
-
-        tracker.log_other(f"sample_{original_idx}_result", {
-            index_field_name: original_idx,
-            "subset_index": i,
-            "true_label": label,
-            "prediction": prediction,
-            "radius": radius,
-            "correct": prediction == label,
-            "time_elapsed": time_elapsed
-        })
-
-        print(f"{original_idx}\t{label}\t{prediction}\t{radius:.3}\t{correct}\t{time_elapsed}", file=f, flush=True)
-
-        if total_num % 20 == 0:
-            print(f"Progress: {total_num}/{total_samples} samples processed ({current_accuracy:.4f} accuracy)")
-
-        if total_num % 50 == 0:
+        # Create/update summary with current progress if not already done
+        if total_num > 0:
+            current_time = time.time()
+            current_total_duration = current_time - start_time
             try:
-                csv_writer.log_to_comet(tracker)
-                tracker.log_asset(str(output_file))
-                print(f"Periodic backup: CSV files and txt file logged to Comet ML (sample {total_num})")
+                csv_writer.create_summary(
+                    total_num=total_num,
+                    correct=correct,
+                    n_misclassified=n_misclassified,
+                    n_abstain=n_abstain,
+                    sigma=sigma,
+                    alpha=alpha,
+                    N0=N0,
+                    N=N,
+                    model_name=classifier_name_short,
+                    total_duration=current_total_duration,
+                    sum_certification_time=sum_certification_time,
+                )
             except Exception as e:
-                print(f"Warning: Failed to log CSV files to Comet ML: {e}")
+                print(f"Warning: Failed to create summary in finally block: {e}")
 
-    f.close()
-
-    final_accuracy = correct / float(total_num)
+    final_accuracy = correct / float(total_num) if total_num > 0 else 0.0
     if use_base_predict:
         print("clean accuracy of base classifier %.4f " % final_accuracy)
     else:

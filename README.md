@@ -2,7 +2,7 @@
 
 Code base for my Master Thesis titled <ins>"Using Randomized Smoothing to compute Robustness Distributions"</ins>. 
 
-The goal of the thesis is to investigate the use of Diffusion Denoised Smoothing to compute Robustness Distributions for complex models and datasets. 
+The goal of the thesis is to investigate the robustness characteristics of classifiers defended with Diffusion Denoised Smoothing using robustness distributions for complex models and datasets. 
 
 The basis of the code is formed by the PyTorch implementation of <ins>**Diffusion Denoised Smoothing**</ins>, proposed in the ICLR 2023 paper:
 

@@ -55,7 +55,9 @@ def main(cfg: DictConfig):
     alpha = cfg.alpha
     sample_correct_predictions = cfg.get("sample_correct_predictions", True)
     sample_stratified = cfg.get("sample_stratified", cfg.get("stratified", False))
-    use_base_predict = cfg.get("use_base_predict", False)
+    mode = cfg.get("mode", "certify")
+    if mode not in ["certify", "predict", "base_predict"]:
+        raise ValueError(f"Invalid mode: '{mode}'. Must be one of: 'certify', 'predict', 'base_predict'")
     classifier_type = cfg.classifier_type
     classifier_name = cfg.classifier_name
 
@@ -134,7 +136,7 @@ def main(cfg: DictConfig):
         "dataset": dataset_name,
         "classifier_type": classifier_type,
         "classifier_name": classifier_name,
-        "use_base_predict": use_base_predict,
+        "mode": mode,
     })
 
     tracker.log_metric("experiment_start_time", start_time)
@@ -220,7 +222,12 @@ def main(cfg: DictConfig):
 
     setup_signal_handler(csv_writer, tracker, output_file, get_summary_params)
 
-    mode_str = "base prediction" if use_base_predict else "certification"
+    mode_str_map = {
+        "certify": "certification",
+        "predict": "prediction",
+        "base_predict": "base prediction"
+    }
+    mode_str = mode_str_map.get(mode, mode)
     print(f"Starting {mode_str} on {total_samples} samples (seed={random_seed})")
 
     f = open(str(output_file), 'w')
@@ -236,10 +243,13 @@ def main(cfg: DictConfig):
             x = x.to(device)
             
             before_time = time.time()
-            if use_base_predict:
+            if mode == "base_predict":
                 prediction = smoothed_classifier.base_predict(x)
                 radius = 0.0
-            else:
+            elif mode == "predict":
+                prediction = smoothed_classifier.predict(x, N, alpha, batch_size)
+                radius = 0.0
+            else:  # mode == "certify"
                 prediction, radius = smoothed_classifier.certify(x, N0, N, alpha, batch_size, label=label)
             after_time = time.time()
             
@@ -252,11 +262,16 @@ def main(cfg: DictConfig):
             time_elapsed = str(datetime.timedelta(seconds=certification_time))
             current_accuracy = correct / float(total_num)
 
-            if not use_base_predict:
+            if mode == "certify":
                 if prediction == Smooth.MISCLASSIFIED:
                     n_misclassified += 1
                 elif prediction == Smooth.ABSTAIN:
                     n_abstain += 1
+            elif mode == "predict":
+                if prediction == Smooth.ABSTAIN:
+                    n_abstain += 1
+                elif prediction != label:
+                    n_misclassified += 1
 
             csv_writer.append_result(
                 image_id=original_idx,
@@ -345,9 +360,11 @@ def main(cfg: DictConfig):
                 print(f"Warning: Failed to create summary in finally block: {e}")
 
     final_accuracy = correct / float(total_num) if total_num > 0 else 0.0
-    if use_base_predict:
+    if mode == "base_predict":
         print("clean accuracy of base classifier %.4f " % final_accuracy)
-    else:
+    elif mode == "predict":
+        print("sigma %.2f accuracy of smoothed classifier (predict mode) %.4f " % (sigma, final_accuracy))
+    else:  # mode == "certify"
         print("sigma %.2f accuracy of smoothed classifier %.4f " % (sigma, final_accuracy))
 
     end_time = time.time()

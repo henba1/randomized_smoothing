@@ -1,5 +1,5 @@
 # @package _global_
-# Sets use_base_predict: True to compute clean accuracy
+# Sets mode: predict to compute smoothed classifier predictions (without certification radius)
 
 defaults:
   - /base/defaults@_global_
@@ -7,8 +7,9 @@ defaults:
   - override /hydra/launcher: submitit_slurm_cifar10
   - _self_
 
-use_base_predict: true
+mode: predict
 random_seed: 5432
-sample_size: 300
-experiment_tag: "base_predict"
+sample_size: 10000
+N0: 30
+experiment_tag: "predict_full_test"
 

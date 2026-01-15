@@ -1,0 +1,14 @@
+# @package _global_
+# Sets mode: predict to compute smoothed classifier predictions (without certification radius)
+
+defaults:
+  - /base/defaults@_global_
+  - /models/vit_p16_224@_global_
+  - override /hydra/launcher: submitit_slurm_cifar10
+  - _self_
+
+mode: predict
+random_seed: 5432
+sample_size: 10000
+experiment_tag: "predict_full_test"
+

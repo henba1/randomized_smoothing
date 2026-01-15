@@ -1,0 +1,29 @@
+# @package _global_
+# Sets mode: base_predict to compute clean accuracy
+# Sweeps over all models: resnet_4b, conv_big, cifar_7_1024, vit_p16_224
+#
+# Usage: python certify_hydra.py --config-name experiment_configs/cifar10/base_predict/all_models_clean -m
+
+defaults:
+  - /base/defaults@_global_
+  - /models/resnet_4b@_global_  # Default model (will be overridden by sweeper)
+  - override /hydra/launcher: submitit_slurm_cifar10
+  - override /hydra/sweeper: basic
+  - _self_
+
+mode: base_predict
+random_seed: 5432
+sample_size: 10000
+experiment_tag: "base_predict_full_test"
+
+hydra:
+  sweeper:
+    params:
+      # Override the model config in defaults for each model
+      # Syntax: ~ removes, + adds a new defaults entry
+      # Each parameter creates one run
+      - "~models/resnet_4b@_global_ +models/resnet_4b@_global_"
+      - "~models/resnet_4b@_global_ +models/conv_big@_global_"
+      - "~models/resnet_4b@_global_ +models/cifar_7_1024@_global_"
+      - "~models/resnet_4b@_global_ +models/vit_p16_224@_global_"
+

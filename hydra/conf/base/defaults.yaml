@@ -10,8 +10,8 @@ sample_size: 300
 random_seed: 5432
 sample_stratified: false
 
-# compute "clean accuracy"
-use_base_predict: false
+# Mode: "certify" (default), "predict", or "base_predict"
+mode: certify
 
 # Certification parameters
 sigma: 0.25

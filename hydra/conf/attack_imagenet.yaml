@@ -1,0 +1,46 @@
+# @package _global_
+# PGD-EOT attack configuration for ImageNet randomized smoothing defense.
+
+defaults:
+  - base/defaults_imagenet
+  - override hydra/launcher: submitit_slurm_imagenet
+  - _self_
+
+experiment_type: "pgd_eot_attack"
+
+attack:
+  targeted: false
+
+  norm: "l2"
+  max_attack_eps_l2: null
+  step_size: 0.01
+  step_size_rel: null
+  num_iter: 50
+  eot_samples: 10
+  random_start: true
+  early_stop: true
+
+  attack_only_if_correct: true
+  cert_N0: 100
+  cert_N: 100000
+  cert_alpha: 0.001
+  cert_batch_size: 200
+  eval_n: 10000
+  eval_alpha: 0.001
+  eval_batch_size: 200
+  min_cert_radius_l2: 0.0
+  sigma_target_multiplier: 2.0
+  log_every: 10
+
+  min_radius_search:
+    enabled: true
+    max_eps_l2: 3.0
+    coarse_steps: 10
+    binary_steps: 8
+    eval_n: 500
+    eval_alpha: 0.001
+    eval_batch_size: 200
+    num_iter: 30
+    eot_samples: 5
+
+

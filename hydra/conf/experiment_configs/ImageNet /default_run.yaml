@@ -1,0 +1,14 @@
+# @package _global_
+# Sets mode: base_predict to compute clean accuracy
+
+defaults:
+  - /base/defaults@_global_
+  - /models/beit_large_patch16_512@_global_
+  - override /hydra/launcher: submitit_slurm_imagenet
+  - _self_
+
+mode: base_predict
+random_seed: 42
+sample_size: 100
+experiment_tag: "default_run"
+

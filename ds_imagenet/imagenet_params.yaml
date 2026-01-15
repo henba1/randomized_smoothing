@@ -14,7 +14,7 @@ sample_stratified: false
 # Randomized smoothing variables
 sigma: 0.25
 N0: 100
-N: 100000
+N: 10000
 batch_size: 200
 alpha: 0.001
 
@@ -23,4 +23,4 @@ classifier_type: "timm"
 classifier_name: "beit_large_patch16_512"
 
 #experiment tracking
-experiment_tag: "default"
+experiment_tag: "default_imagenet"

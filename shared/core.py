@@ -145,7 +145,6 @@ class Smooth:
                     imgs = imgs * 2 - 1
                 # else: ONNX/PyTorch keep [0,1]
                 
-                # Call classifier directly
                 out = classifier(imgs)
                 prediction = out.logits.argmax(1).item()
             else:
@@ -184,6 +183,9 @@ class Smooth:
 
                 predictions = self.base_classifier(batch, self.t).argmax(1)
                 counts += self._count_arr(predictions.cpu().numpy(), self.num_classes)
+            
+                # if torch.cuda.is_available():
+                #     torch.cuda.empty_cache()
             return counts
 
     def _count_arr(self, arr: np.ndarray, length: int) -> np.ndarray:

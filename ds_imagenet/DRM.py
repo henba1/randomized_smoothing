@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import timm
 import torch
 import torch.nn as nn
@@ -73,6 +75,7 @@ class DiffusionRobustModel(nn.Module):
 
         self.model = model
         self.diffusion = diffusion
+        self.model.requires_grad_(False)
 
         if classifier_type == "onnx":
             if classifier_name is None or models_dir is None:
@@ -119,7 +122,7 @@ class DiffusionRobustModel(nn.Module):
             print_huggingface_device_status(classifier, model_id)
             self.classifier_type = "huggingface"
             self.classifier_name = model_id
-        else:  # timm (default)
+        else:
             if classifier_name is None:
                 raise ValueError("classifier_name must be specified for timm")
             classifier = timm.create_model(classifier_name, pretrained=True)
@@ -128,53 +131,47 @@ class DiffusionRobustModel(nn.Module):
             self.classifier_name = classifier_name
 
         self.classifier = classifier
+        if isinstance(self.classifier, nn.Module):
+            self.classifier.requires_grad_(False)
 
-    def forward(self, x, t):
-        x_in = x * 2 - 1
-        imgs = self.denoise(x_in, t)
+    def forward(self, x, t, *, enable_grad: bool = False):
+        grad_ctx = torch.enable_grad() if enable_grad else torch.no_grad()
+        with grad_ctx:
+            x_in = x * 2 - 1
+            imgs = self.denoise(x_in, t, enable_grad=enable_grad)
 
-        if self.classifier_type == "onnx":
-            target_size = (self.classifier.expected_height, self.classifier.expected_width)
-        elif self.classifier_type == "pytorch":
-            target_size = (self.classifier.expected_height, self.classifier.expected_width)
-        elif self.classifier_type == "timm":
-            cfg = getattr(self.classifier, "default_cfg", {}) or {}
-            input_size = cfg.get("input_size", (3, 512, 512))
-            target_size = (input_size[1], input_size[2])
-        else:  # huggingface
-            target_size = (512, 512)
+            if self.classifier_type == "onnx":
+                target_size = (self.classifier.expected_height, self.classifier.expected_width)
+            elif self.classifier_type == "pytorch":
+                target_size = (self.classifier.expected_height, self.classifier.expected_width)
+            elif self.classifier_type == "timm":
+                target_size = (512, 512)
+            else:
+                target_size = (512, 512)
 
-        imgs = torch.nn.functional.interpolate(
-            imgs, target_size, mode="bicubic", antialias=True
-        )
+            imgs = torch.nn.functional.interpolate(
+                imgs, target_size, mode="bicubic", antialias=True
+            )
 
-        if self.classifier_type in ["onnx", "pytorch"]:
-            imgs = imgs * 0.5 + 0.5  # convert [-1,1] to [0,1]
+            if self.classifier_type in ["onnx", "pytorch"]:
+                imgs = imgs * 0.5 + 0.5  # convert [-1,1] to [0,1]
 
-        with torch.no_grad():
             out = self.classifier(imgs)
+            return out.logits if hasattr(out, "logits") else out
 
-        return out.logits
+    def denoise(self, x_start, t, multistep: bool = False, *, enable_grad: bool = False):
+        grad_ctx = torch.enable_grad() if enable_grad else torch.no_grad()
+        with grad_ctx:
+            t_batch = torch.tensor([t] * len(x_start), device=self.device)
+            noise = torch.randn_like(x_start)
+            x_t_start = self.diffusion.q_sample(x_start=x_start, t=t_batch, noise=noise)
 
-    def denoise(self, x_start, t, multistep: bool = False):
-        t_batch = torch.tensor([t] * len(x_start), device=self.device)
-        noise = torch.randn_like(x_start)
-        x_t_start = self.diffusion.q_sample(x_start=x_start, t=t_batch, noise=noise)
-
-        with torch.no_grad():
             if multistep:
                 out = x_t_start
                 for i in range(t)[::-1]:
                     t_batch = torch.tensor([i] * len(x_start), device=self.device)
-                    out = self.diffusion.p_sample(
-                        self.model, out, t_batch, clip_denoised=True
-                    )["sample"]
+                    out = self.diffusion.p_sample(self.model, out, t_batch, clip_denoised=True)["sample"]
             else:
-                out = self.diffusion.p_sample(
-                    self.model, 
-                    x_t_start, 
-                    t_batch, 
-                    clip_denoised=True
-                )["pred_xstart"]
+                out = self.diffusion.p_sample(self.model, x_t_start, t_batch, clip_denoised=True)["pred_xstart"]
 
-        return out
+            return out

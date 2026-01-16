@@ -3,7 +3,7 @@ from pathlib import Path
 import timm
 import torch
 import torch.nn as nn
-from guided_diffusion.script_util import (
+from .guided_diffusion.script_util import (
     args_to_dict,
     create_model_and_diffusion,
     model_and_diffusion_defaults,
@@ -59,8 +59,14 @@ class DiffusionRobustModel(nn.Module):
         dataset_name: str | None = "ImageNet",
         device: torch.device | None = None,
         image_size=None,
+        pytorch_normalization: str = "none",
     ):
         super().__init__()
+        if pytorch_normalization not in {"none", "sdpcrown"}:
+            raise ValueError(
+                "pytorch_normalization must be one of {'none', 'sdpcrown'}"
+            )
+        self.pytorch_normalization = pytorch_normalization
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = device
@@ -134,6 +140,13 @@ class DiffusionRobustModel(nn.Module):
         if isinstance(self.classifier, nn.Module):
             self.classifier.requires_grad_(False)
 
+    def _apply_pytorch_normalization(self, imgs: torch.Tensor) -> torch.Tensor:
+        if self.pytorch_normalization == "sdpcrown":
+            means = torch.tensor([125.3, 123.0, 113.9], device=imgs.device, dtype=imgs.dtype) / 255
+            stds = torch.tensor([0.225, 0.225, 0.225], device=imgs.device, dtype=imgs.dtype)
+            return (imgs - means.view(1, 3, 1, 1)) / stds.view(1, 3, 1, 1)
+        return imgs
+
     def forward(self, x, t, *, enable_grad: bool = False):
         grad_ctx = torch.enable_grad() if enable_grad else torch.no_grad()
         with grad_ctx:
@@ -155,6 +168,8 @@ class DiffusionRobustModel(nn.Module):
 
             if self.classifier_type in ["onnx", "pytorch"]:
                 imgs = imgs * 0.5 + 0.5  # convert [-1,1] to [0,1]
+                if self.classifier_type == "pytorch":
+                    imgs = self._apply_pytorch_normalization(imgs)
 
             out = self.classifier(imgs)
             return out.logits if hasattr(out, "logits") else out

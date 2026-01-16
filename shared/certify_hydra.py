@@ -60,6 +60,11 @@ def main(cfg: DictConfig):
         raise ValueError(f"Invalid mode: '{mode}'. Must be one of: 'certify', 'predict', 'base_predict'")
     classifier_type = cfg.classifier_type
     classifier_name = cfg.classifier_name
+    pytorch_normalization = cfg.get("pytorch_normalization", "none")
+    
+    # Debug: Print resolved config values
+    print(f"DEBUG: Resolved classifier_type = {repr(classifier_type)} (type: {type(classifier_type)})")
+    print(f"DEBUG: Resolved classifier_name = {repr(classifier_name)} (type: {type(classifier_name)})")
 
     classifier_name_short = classifier_name.split("/")[-1] if classifier_name else "unknown"
 
@@ -136,6 +141,7 @@ def main(cfg: DictConfig):
         "dataset": dataset_name,
         "classifier_type": classifier_type,
         "classifier_name": classifier_name,
+        "pytorch_normalization": pytorch_normalization,
         "mode": mode,
     })
 
@@ -151,14 +157,14 @@ def main(cfg: DictConfig):
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
 
-    # Initialize model with specified classifier
     model = DiffusionRobustModel(
         classifier_type=classifier_type,
         classifier_name=classifier_name,
         models_dir=MODELS_DIR,
         dataset_name=dataset_name,
         device=device,
-        image_size=image_size
+        image_size=image_size,
+        pytorch_normalization=pytorch_normalization,
     )
 
     sample_func = get_balanced_sample if sample_stratified else get_sample
@@ -247,7 +253,8 @@ def main(cfg: DictConfig):
                 prediction = smoothed_classifier.base_predict(x)
                 radius = 0.0
             elif mode == "predict":
-                prediction = smoothed_classifier.predict(x, N, alpha, batch_size)
+                # Use N0 for predict mode (faster, sufficient for prediction without certification)
+                prediction = smoothed_classifier.predict(x, N0, alpha, batch_size)
                 radius = 0.0
             else:  # mode == "certify"
                 prediction, radius = smoothed_classifier.certify(x, N0, N, alpha, batch_size, label=label)

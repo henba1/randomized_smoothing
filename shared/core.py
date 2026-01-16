@@ -143,10 +143,23 @@ class Smooth:
                 elif classifier_type == "timm":
                     #https://huggingface.co/timm/beit_large_patch16_512.in22k_ft_in22k_in1k
                     imgs = imgs * 2 - 1
+                elif classifier_type == "pytorch":
+                    pytorch_normalization = getattr(
+                        self.base_classifier, "pytorch_normalization", "none"
+                    )
+                    if pytorch_normalization == "sdpcrown":
+                        means = torch.tensor(
+                            [125.3, 123.0, 113.9], device=imgs.device, dtype=imgs.dtype
+                        ) / 255
+                        stds = torch.tensor(
+                            [0.225, 0.225, 0.225], device=imgs.device, dtype=imgs.dtype
+                        )
+                        imgs = (imgs - means.view(1, 3, 1, 1)) / stds.view(1, 3, 1, 1)
                 # else: ONNX/PyTorch keep [0,1]
                 
                 out = classifier(imgs)
-                prediction = out.logits.argmax(1).item()
+                logits = out.logits if hasattr(out, "logits") else out
+                prediction = logits.argmax(1).item()
             else:
                 # Regular classifier - call directly (may need t parameter)
                 # Try calling without t first, fall back to with t if needed

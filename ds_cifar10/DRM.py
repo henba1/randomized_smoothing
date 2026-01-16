@@ -1,7 +1,9 @@
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 
-from improved_diffusion.script_util import (
+from .improved_diffusion.script_util import (
     args_to_dict,
     create_model_and_diffusion,
     model_and_diffusion_defaults,
@@ -40,9 +42,15 @@ class DiffusionRobustModel(nn.Module):
         models_dir: str | None = None, 
         dataset_name: str | None = None, 
         device: torch.device | None = None, 
-        image_size: tuple[int, int] | None = None
+        image_size: tuple[int, int] | None = None,
+        pytorch_normalization: str = "none",
     ):
         super().__init__()
+        if pytorch_normalization not in {"none", "sdpcrown"}:
+            raise ValueError(
+                "pytorch_normalization must be one of {'none', 'sdpcrown'}"
+            )
+        self.pytorch_normalization = pytorch_normalization
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = device
@@ -58,6 +66,7 @@ class DiffusionRobustModel(nn.Module):
 
         self.model = model 
         self.diffusion = diffusion 
+        self.model.requires_grad_(False)
 
         # Load classifier based on type
         if classifier_type == "onnx":
@@ -129,55 +138,58 @@ class DiffusionRobustModel(nn.Module):
             self.classifier_name = model_id
 
         self.classifier = classifier
+        if isinstance(self.classifier, nn.Module):
+            self.classifier.requires_grad_(False)
 
-    def forward(self, x, t):
-        x_in = x * 2 -1 #Output is in [-1,1]
-        imgs = self.denoise(x_in, t)
+    def _apply_pytorch_normalization(self, imgs: torch.Tensor) -> torch.Tensor:
+        if self.pytorch_normalization == "sdpcrown":
+            means = torch.tensor([125.3, 123.0, 113.9], device=imgs.device, dtype=imgs.dtype) / 255
+            stds = torch.tensor([0.225, 0.225, 0.225], device=imgs.device, dtype=imgs.dtype)
+            return (imgs - means.view(1, 3, 1, 1)) / stds.view(1, 3, 1, 1)
+        return imgs
 
-        # Resize images based on classifier type
-        if self.classifier_type == "onnx":
-            # Use the ONNX model's expected input size
-            target_size = (self.classifier.expected_height, self.classifier.expected_width)
-        elif self.classifier_type == "pytorch":
-            # Use the PyTorch model's expected input size
-            target_size = (self.classifier.expected_height, self.classifier.expected_width)
-        else:
-            # HuggingFace ViT expects 224x224 as it was trained on ImageNet, #TODO hardcoded for now
-            target_size = (224, 224)
-        #upscale the images to the target size
-        imgs = torch.nn.functional.interpolate(imgs, target_size, mode='bicubic', antialias=True)
-        
-        # Convert back to [0,1] for ONNX and PyTorch models (assume trained on [0,1] data)
-        if self.classifier_type in ["onnx", "pytorch"]:
-            imgs = imgs * 0.5 + 0.5  # Convert [-1, 1] to [0, 1]
+    def forward(self, x, t, *, enable_grad: bool = False):
+        grad_ctx = torch.enable_grad() if enable_grad else torch.no_grad()
+        with grad_ctx:
+            x_in = x * 2 - 1  # output is in [-1,1]
+            imgs = self.denoise(x_in, t, enable_grad=enable_grad)
 
-        with torch.no_grad():
+            # Resize images based on classifier type
+            if self.classifier_type == "onnx":
+                # Use the ONNX model's expected input size
+                target_size = (self.classifier.expected_height, self.classifier.expected_width)
+            elif self.classifier_type == "pytorch":
+                # Use the PyTorch model's expected input size
+                target_size = (self.classifier.expected_height, self.classifier.expected_width)
+            else:
+                # HuggingFace ViT expects 224x224 as it was trained on ImageNet, #TODO hardcoded for now
+                target_size = (224, 224)
+
+            # Upscale the images to  target size
+            imgs = torch.nn.functional.interpolate(imgs, target_size, mode="bicubic", antialias=True)
+            
+            # Convert back to [0,1] for ONNX and PyTorch models (assume trained on [0,1] data)
+            if self.classifier_type in ["onnx", "pytorch"]:
+                imgs = imgs * 0.5 + 0.5  # Convert [-1, 1] to [0, 1]
+                if self.classifier_type == "pytorch":
+                    imgs = self._apply_pytorch_normalization(imgs)
+
             out = self.classifier(imgs)
+            return out.logits if hasattr(out, "logits") else out
 
-        return out.logits
+    def denoise(self, x_start, t, multistep: bool = False, *, enable_grad: bool = False):
+        grad_ctx = torch.enable_grad() if enable_grad else torch.no_grad()
+        with grad_ctx:
+            t_batch = torch.tensor([t] * len(x_start), device=self.device)
+            noise = torch.randn_like(x_start)
+            x_t_start = self.diffusion.q_sample(x_start=x_start, t=t_batch, noise=noise)
 
-    def denoise(self, x_start, t, multistep=False):
-        t_batch = torch.tensor([t] * len(x_start), device=self.device)
-        noise = torch.randn_like(x_start)
-        x_t_start = self.diffusion.q_sample(x_start=x_start, t=t_batch, noise=noise)
-
-        with torch.no_grad():
             if multistep:
                 out = x_t_start
                 for i in range(t)[::-1]:
                     t_batch = torch.tensor([i] * len(x_start), device=self.device)
-                    out = self.diffusion.p_sample(
-                        self.model,
-                        out,
-                        t_batch,
-                        clip_denoised=True
-                    )['sample']
+                    out = self.diffusion.p_sample(self.model, out, t_batch, clip_denoised=True)["sample"]
             else:
-                out = self.diffusion.p_sample(
-                    self.model,
-                    x_t_start,
-                    t_batch,
-                    clip_denoised=True
-                )['pred_xstart']
+                out = self.diffusion.p_sample(self.model, x_t_start, t_batch, clip_denoised=True)["pred_xstart"]
 
-        return out
+            return out

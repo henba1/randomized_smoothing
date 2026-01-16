@@ -67,6 +67,7 @@ def main(args=None, defaults=None):
     alpha = defaults.get("alpha", 0.001)
     classifier_type = defaults.get("classifier_type", "huggingface")
     classifier_name = defaults.get("classifier_name")
+    pytorch_normalization = defaults.get("pytorch_normalization", "none")
     experiment_tag = defaults.get("experiment_tag", None)
     
     default_params = {
@@ -83,6 +84,7 @@ def main(args=None, defaults=None):
         "mode": mode,
         "classifier_type": classifier_type,
         "classifier_name": classifier_name,
+        "pytorch_normalization": pytorch_normalization,
     }
     params = override_args_with_cli(default_params, args)
     (
@@ -99,6 +101,7 @@ def main(args=None, defaults=None):
         mode,
         classifier_type,
         classifier_name,
+        pytorch_normalization,
     ) = params.values()
     
     classifier_name_short = classifier_name.split("/")[-1] if classifier_name else "unknown"
@@ -175,6 +178,7 @@ def main(args=None, defaults=None):
         "dataset": dataset_name,
         "classifier_type": classifier_type,
         "classifier_name": classifier_name,
+        "pytorch_normalization": pytorch_normalization,
         "mode": mode,
     })
     
@@ -198,7 +202,8 @@ def main(args=None, defaults=None):
         models_dir=MODELS_DIR,
         dataset_name=dataset_name,
         device=device,
-        image_size=image_size
+        image_size=image_size,
+        pytorch_normalization=pytorch_normalization,
     )
     
     sample_func = get_balanced_sample if sample_stratified else get_sample
@@ -286,7 +291,8 @@ def main(args=None, defaults=None):
                 prediction = smoothed_classifier.base_predict(x)
                 radius = 0.0
             elif mode == "predict":
-                prediction = smoothed_classifier.predict(x, N, alpha, batch_size)
+                # Use N0 for predict mode (faster, sufficient for prediction without certification)
+                prediction = smoothed_classifier.predict(x, N0, alpha, batch_size)
                 radius = 0.0
             else:  # mode == "certify"
                 prediction, radius = smoothed_classifier.certify(x, N0, N, alpha, batch_size, label=label)
@@ -374,7 +380,6 @@ def main(args=None, defaults=None):
                 except Exception as e:
                     print(f"Warning: Failed to log CSV files to Comet ML: {e}")
     finally:
-        # Ensure file is closed and summary is created even if loop is interrupted
         f.close()
         
         # Create/update summary with current progress if not already done
@@ -500,6 +505,13 @@ def create_argument_parser():
         type=str,
         default=None,
         help="Classifier identifier (HF model id, ONNX/PyTorch name, or timm model)"
+    )
+    parser.add_argument(
+        "--pytorch_normalization",
+        type=str,
+        default=None,
+        choices=["none", "sdpcrown"],
+        help="Normalization for PyTorch classifiers"
     )
     parser.add_argument(
         "--dataset_name",

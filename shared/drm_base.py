@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from collections.abc import Callable
 from pathlib import Path
 
@@ -32,7 +33,6 @@ class DiffusionRobustModelBase(nn.Module):
         timm_target_size: tuple[int, int] | None = None,
         verbose: bool = False,
         list_missing_models: bool = False,
-        reject_state_dict: bool = False,
     ):
         super().__init__()
         if pytorch_normalization not in {"none", "sdpcrown"}:
@@ -67,7 +67,6 @@ class DiffusionRobustModelBase(nn.Module):
             device=device,
             verbose=verbose,
             list_missing_models=list_missing_models,
-            reject_state_dict=reject_state_dict,
         )
         if isinstance(self.classifier, nn.Module):
             self.classifier.requires_grad_(False)
@@ -82,7 +81,6 @@ class DiffusionRobustModelBase(nn.Module):
         device: torch.device,
         verbose: bool,
         list_missing_models: bool,
-        reject_state_dict: bool,
     ) -> nn.Module:
         if classifier_type == "onnx":
             if classifier_name is None:
@@ -119,13 +117,17 @@ class DiffusionRobustModelBase(nn.Module):
                     )
                 raise FileNotFoundError(f"PyTorch model not found: {model_path}")
             pytorch_model = torch.load(model_path, map_location=device, weights_only=False)
-            if reject_state_dict and isinstance(pytorch_model, dict) and "state_dict" in pytorch_model:
-                raise ValueError(
-                    f"Model {model_path} is a state_dict. "
-                    "Please provide a full model (architecture + weights) saved with torch.save(model, ...)"
-                )
-            if not isinstance(pytorch_model, nn.Module):
-                raise ValueError(f"Loaded object from {model_path} is not a torch.nn.Module")
+            if isinstance(pytorch_model, (OrderedDict, dict)) and not isinstance(
+                pytorch_model, nn.Module
+            ):
+                if self.pytorch_normalization == "sdpcrown":
+                    from ada_verona import load_sdpcrown_pytorch_model
+
+                    pytorch_model = load_sdpcrown_pytorch_model(model_path, device)
+                else:
+                    raise ValueError(
+                        f"Cannot load state_dict for {model_path}"
+                    )
             expected_height = image_size[1]
             expected_width = image_size[0]
             classifier = PyTorchClassifierWrapper(

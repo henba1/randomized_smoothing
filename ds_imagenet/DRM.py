@@ -47,8 +47,8 @@ def _load_state_dict(diffusion_model_path: str, device: torch.device) -> dict:
 class DiffusionRobustModel(DiffusionRobustModelBase):
     def __init__(
         self,
-        classifier_type: str = "timm",
-        classifier_name: str | None = "beit_large_patch16_512",
+        classifier_type: str,
+        classifier_name: str,
         models_dir: str | None = None,
         dataset_name: str | None = "ImageNet",
         device: torch.device | None = None,
@@ -72,5 +72,4 @@ class DiffusionRobustModel(DiffusionRobustModelBase):
             timm_target_size=(512, 512),
             verbose=False,
             list_missing_models=False,
-            reject_state_dict=False,
         )

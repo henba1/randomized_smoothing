@@ -35,8 +35,8 @@ def _load_state_dict(diffusion_model_path: str, device: torch.device) -> dict:
 
 class DiffusionRobustModel(DiffusionRobustModelBase):
     def __init__(self, 
-        classifier_type: str = "huggingface", 
-        classifier_name: str | None = "aaraki/vit-base-patch16-224-in21k-finetuned-cifar10", 
+        classifier_type: str,
+        classifier_name: str,
         models_dir: str | None = None, 
         dataset_name: str | None = None, 
         device: torch.device | None = None, 
@@ -60,5 +60,4 @@ class DiffusionRobustModel(DiffusionRobustModelBase):
             timm_target_size=None,
             verbose=True,
             list_missing_models=True,
-            reject_state_dict=True,
         )

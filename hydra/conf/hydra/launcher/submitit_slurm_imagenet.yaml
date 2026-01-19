@@ -7,7 +7,7 @@ partition: gpu_h100
 gpus_per_node: 1
 cpus_per_task: 16
 mem_gb: 180
-timeout_min: 7200
+timeout_min: 2300
 
 
 name: certify_imagenet_${hydra.job.name}

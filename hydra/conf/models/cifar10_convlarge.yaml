@@ -1,0 +1,4 @@
+# @package _global_
+
+classifier_type: pytorch
+classifier_name: cifar10_convlarge

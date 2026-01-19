@@ -1,0 +1,63 @@
+# @package _global_
+
+defaults:
+  - /base/defaults_imagenet@_global_
+  - /models/beit_large_patch16_512@_global_
+  - override /hydra/launcher: submitit_slurm
+  - override /hydra/sweeper: explicit_combinations
+  - _self_
+
+# Default parameters:
+sigma: 0.25
+alpha: 0.001
+N0: 2
+N: 5
+
+random_seed: 42
+sample_size: 300
+experiment_tag: "N_ablation_imagenet_300"
+
+hydra:
+  sweeper:
+    # Default: sigma=0.25, alpha=0.001, N0=100, N=100000
+    # Using ablative_params for explicit combinations
+    # Note: Run #0 (default config) will be generated - cancel it manually if not needed
+    #
+    # N0 sweep (runs 1-2): experiment_tag="conv_big_N0_600"
+    # N sweep (runs 3-5): experiment_tag="conv_big_N_600"
+    # alpha sweep (runs 6-7): experiment_tag="conv_big_alpha_600"
+    ablative_params:
+      # N0 sweep
+      # - N0: 30
+      #   N: 100000
+      #   alpha: 0.001
+      #   experiment_tag: "conv_big_N0_600"
+      # - N0: 1000
+      #   N: 100000
+      #   alpha: 0.001
+      #   experiment_tag: "conv_big_N0_600"
+
+      # N sweep
+      - N0: 100
+        N: 10
+        alpha: 0.001
+        experiment_tag: "beit_N_300"
+      - N0: 100
+        N: 100
+        alpha: 0.001
+        experiment_tag: "beit_N_300"
+      - N0: 100
+        N: 1000
+        alpha: 0.001
+        experiment_tag: "beit_N_300"
+
+      # alpha sweep
+      # - N0: 100
+      #   N: 100000
+      #   alpha: 0.0001
+      #   experiment_tag: "conv_big_alpha_600"
+      # - N0: 100
+      #   N: 100000
+      #   alpha: 0.01
+      #   experiment_tag: "conv_big_alpha_600"
+

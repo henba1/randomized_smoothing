@@ -12,7 +12,7 @@ sample_stratified: false
 # Certification parameters
 sigma: 0.25
 N0: 100
-N: 100000
+N: 10000
 batch_size: 200
 alpha: 0.001
 sample_correct_predictions: true

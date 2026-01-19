@@ -6,9 +6,9 @@ defaults:
   - override /hydra/launcher: submitit_slurm_imagenet
   - _self_
 
-mode: certify
+mode: base_predict
 
 random_seed: 42
-sample_size: 300
-experiment_tag: "certify_imagenet_300"
+sample_size: 10000
+experiment_tag: "base_predict_imagenet_10k"
 

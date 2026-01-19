@@ -4,11 +4,17 @@ defaults:
   - /base/defaults_imagenet@_global_
   - /models/beit_large_patch16_512@_global_
   - override /hydra/launcher: submitit_slurm_imagenet
+  - override /hydra/sweeper: basic
   - _self_
 
 mode: certify
 
 random_seed: 42
 sample_size: 300
-experiment_tag: "certify_imagenet_300"
+experiment_tag: "sigma_sweep_beit_large_patch16_512"
+
+hydra:
+  sweeper:
+    params:
+      ++sigma: 0.25,0.5,1.0
 

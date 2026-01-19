@@ -3,7 +3,7 @@
 defaults:
   - /base/defaults_imagenet@_global_
   - /models/beit_large_patch16_512@_global_
-  - override /hydra/launcher: submitit_slurm
+  - override /hydra/launcher: submitit_slurm_imagenet
   - override /hydra/sweeper: explicit_combinations
   - _self_
 

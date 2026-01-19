@@ -1,9 +1,7 @@
 import os
 import subprocess
 
-import numpy as np
 import torch
-from torch.utils.data import Dataset
 
 
 def print_huggingface_device_status(model: torch.nn.Module, model_id: str) -> str:

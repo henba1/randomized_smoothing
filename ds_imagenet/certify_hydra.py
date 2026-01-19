@@ -1,8 +1,8 @@
 """ImageNet Hydra certification wrapper."""
 
-from hydra import main as hydra_main
 from omegaconf import DictConfig
 
+from hydra import main as hydra_main
 from shared.certify_hydra import main as shared_main
 
 

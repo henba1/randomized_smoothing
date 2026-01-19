@@ -8,11 +8,12 @@ import torch.distributed as dist
 from torch.nn.parallel.distributed import DistributedDataParallel as DDP
 from torch.optim import AdamW
 
-from . import dist_util
 from shared.diffusion import logger
-from .fp16_util import MixedPrecisionTrainer
 from shared.diffusion.nn import update_ema
 from shared.diffusion.resample import LossAwareSampler, UniformSampler
+
+from . import dist_util
+from .fp16_util import MixedPrecisionTrainer
 
 # For ImageNet experiments, this was a good default value.
 # We found that the lg_loss_scale quickly climbed to

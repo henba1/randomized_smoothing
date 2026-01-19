@@ -1,24 +1,12 @@
 """Runner Script for randomized smoothing experiments."""
 
-import comet_ml
 import argparse
 import datetime
 import logging
-import sys
 import time
-from pathlib import Path
-
-import torch
-from shared.tracking.comet_tracker import CometTracker
-from shared.io.csv_result_writer import CSVResultWriter
-from shared.io.signal_handler import setup_signal_handler
-from shared.utils.utils import (
-    get_diffusion_model_path_name_tuple,
-    override_args_with_cli,
-    get_device_with_diagnostics,
-)
 
 from ada_verona import (
+    create_experiment_directory,
     get_balanced_sample,
     get_dataset_config,
     get_dataset_dir,
@@ -26,7 +14,15 @@ from ada_verona import (
     get_results_dir,
     get_sample,
     save_original_indices,
-    create_experiment_directory,
+)
+
+from shared.io.csv_result_writer import CSVResultWriter
+from shared.io.signal_handler import setup_signal_handler
+from shared.tracking.comet_tracker import CometTracker
+from shared.utils.utils import (
+    get_device_with_diagnostics,
+    get_diffusion_model_path_name_tuple,
+    override_args_with_cli,
 )
 
 logging.getLogger("urllib3").setLevel(logging.WARNING)

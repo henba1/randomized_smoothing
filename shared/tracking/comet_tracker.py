@@ -19,6 +19,7 @@ class CometTracker:
         model_name: str,
         ddpm_model_name: str,
         project_name: str = "rs-rd",
+        experiment_type: str = "certification",
         sigma: float | None = None,
         alpha: float | None = None,
         N0: int | None = None,
@@ -33,6 +34,7 @@ class CometTracker:
             model_name: Name of the model
             ddpm_model_name: Name of the DDPM model
             project_name: Comet ML project name
+            experiment_type: High-level experiment type used for tagging (e.g. "certification", "pgd_eot_attack")
             sigma: Noise hyperparameter for tagging
             alpha: Failure probability for tagging
             N0: Number of samples for initial prediction for tagging
@@ -60,7 +62,7 @@ class CometTracker:
             )
             
             # Build tags list and add them after experiment creation
-            tags = ["certification", f"{dataset_name}", f"{model_name}", f"{ddpm_model_name}"]
+            tags = [experiment_type, f"{dataset_name}", f"{model_name}", f"{ddpm_model_name}"]
             if experiment_tag is not None:
                 tags.append(experiment_tag)
             if sigma is not None:

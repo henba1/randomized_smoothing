@@ -6,10 +6,12 @@ dataset_name: "CIFAR-10"
 split: "test"
 
 # Sampling configuration
-sample_size: 100
+sample_size: 10
 random_seed: 42
 sample_correct_predictions: true
 sample_stratified: false
+
+mode: "predict"
 
 # Randomized smoothing variables
 sigma: 0.25
@@ -19,8 +21,8 @@ batch_size: 200
 alpha: 0.001
 
 # Classifier configuration
-classifier_type: "huggingface"
-classifier_name: "aaraki/vit-base-patch16-224-in21k-finetuned-cifar10"
-
+classifier_type: "pytorch"
+classifier_name: "cifar10_convlarge"
+pytorch_normalization: "sdpcrown"
 #experiment tracking
-experiment_tag: "default"
+experiment_tag: "predict_check"

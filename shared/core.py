@@ -2,6 +2,7 @@ from math import ceil
 
 import numpy as np
 import torch
+from ada_verona import apply_pytorch_normalization
 from scipy.stats import binomtest, norm
 from statsmodels.stats.proportion import proportion_confint
 
@@ -121,9 +122,7 @@ class Smooth:
                 # Input x is in [0,1] range, keep it as is for preprocessing
                 
                 # Determine target size based on classifier type
-                if classifier_type == "onnx":
-                    target_size = (classifier.expected_height, classifier.expected_width)
-                elif classifier_type == "pytorch":
+                if classifier_type == "onnx" or classifier_type == "pytorch":
                     target_size = (classifier.expected_height, classifier.expected_width)
                 elif classifier_type == "timm":
                     cfg = getattr(classifier, "default_cfg", {}) or {}
@@ -147,15 +146,7 @@ class Smooth:
                     pytorch_normalization = getattr(
                         self.base_classifier, "pytorch_normalization", "none"
                     )
-                    if pytorch_normalization == "sdpcrown":
-                        means = torch.tensor(
-                            [125.3, 123.0, 113.9], device=imgs.device, dtype=imgs.dtype
-                        ) / 255
-                        stds = torch.tensor(
-                            [0.225, 0.225, 0.225], device=imgs.device, dtype=imgs.dtype
-                        )
-                        imgs = (imgs - means.view(1, 3, 1, 1)) / stds.view(1, 3, 1, 1)
-                # else: ONNX/PyTorch keep [0,1]
+                    imgs = apply_pytorch_normalization(imgs, pytorch_normalization)
                 
                 out = classifier(imgs)
                 logits = out.logits if hasattr(out, "logits") else out
@@ -197,8 +188,9 @@ class Smooth:
                 predictions = self.base_classifier(batch, self.t).argmax(1)
                 counts += self._count_arr(predictions.cpu().numpy(), self.num_classes)
             
-                # if torch.cuda.is_available():
-                #     torch.cuda.empty_cache()
+            # if torch.cuda.is_available():
+            #     if torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated() > 0.9:
+            #         torch.cuda.empty_cache()
             return counts
 
     def _count_arr(self, arr: np.ndarray, length: int) -> np.ndarray:

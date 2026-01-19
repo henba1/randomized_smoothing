@@ -1,25 +1,11 @@
 """Unified Hydra-enabled certification script for randomized smoothing experiments."""
 
-import comet_ml
 import datetime
 import logging
-import sys
 import time
-from pathlib import Path
-
-import torch
-from hydra import compose, initialize
-from omegaconf import DictConfig, OmegaConf
-
-from shared.tracking.comet_tracker import CometTracker
-from shared.io.csv_result_writer import CSVResultWriter
-from shared.io.signal_handler import setup_signal_handler
-from shared.utils.utils import (
-    get_diffusion_model_path_name_tuple,
-    get_device_with_diagnostics,
-)
 
 from ada_verona import (
+    create_experiment_directory,
     get_balanced_sample,
     get_dataset_config,
     get_dataset_dir,
@@ -27,7 +13,15 @@ from ada_verona import (
     get_results_dir,
     get_sample,
     save_original_indices,
-    create_experiment_directory,
+)
+from omegaconf import DictConfig, OmegaConf
+
+from shared.io.csv_result_writer import CSVResultWriter
+from shared.io.signal_handler import setup_signal_handler
+from shared.tracking.comet_tracker import CometTracker
+from shared.utils.utils import (
+    get_device_with_diagnostics,
+    get_diffusion_model_path_name_tuple,
 )
 
 logging.getLogger("urllib3").setLevel(logging.WARNING)
@@ -342,10 +336,8 @@ def main(cfg: DictConfig):
                 except Exception as e:
                     print(f"Warning: Failed to log CSV files to Comet ML: {e}")
     finally:
-        # Ensure file is closed and summary is created even if loop is interrupted
         f.close()
         
-        # Create/update summary with current progress if not already done
         if total_num > 0:
             current_time = time.time()
             current_total_duration = current_time - start_time

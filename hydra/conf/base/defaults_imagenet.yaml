@@ -22,7 +22,7 @@ classifier_type: "timm"
 classifier_name: "beit_large_patch16_512"
 
 # Experiment configuration
-experiment_type: "certification"
+mode: certify
 
 hydra:
   job:

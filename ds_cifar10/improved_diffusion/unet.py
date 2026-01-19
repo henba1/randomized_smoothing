@@ -6,7 +6,6 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .fp16_util import convert_module_to_f16, convert_module_to_f32
 from shared.diffusion.nn import (
     SiLU,
     avg_pool_nd,
@@ -17,6 +16,8 @@ from shared.diffusion.nn import (
     timestep_embedding,
     zero_module,
 )
+
+from .fp16_util import convert_module_to_f16, convert_module_to_f32
 
 
 class TimestepBlock(nn.Module):

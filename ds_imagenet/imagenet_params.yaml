@@ -11,6 +11,8 @@ random_seed: 42
 sample_correct_predictions: true
 sample_stratified: false
 
+mode: certify
+
 # Randomized smoothing variables
 sigma: 0.25
 N0: 100

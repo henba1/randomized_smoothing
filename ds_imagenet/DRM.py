@@ -1,10 +1,12 @@
 import torch
+
+from shared.drm_base import DiffusionRobustModelBase
+
 from .guided_diffusion.script_util import (
     args_to_dict,
     create_model_and_diffusion,
     model_and_diffusion_defaults,
 )
-from shared.drm_base import DiffusionRobustModelBase
 
 
 class Args:

@@ -6,7 +6,6 @@ import traceback
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-
 _csv_writer = None
 _tracker = None
 _output_file = None

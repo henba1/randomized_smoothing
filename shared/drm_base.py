@@ -6,6 +6,7 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+from ada_verona import apply_pytorch_normalization
 from transformers import AutoModelForImageClassification
 
 from shared.classifiers.onnx_classifier import load_onnx_classifier
@@ -176,11 +177,7 @@ class DiffusionRobustModelBase(nn.Module):
         raise ValueError(f"Unknown classifier_type: {classifier_type}")
 
     def _apply_pytorch_normalization(self, imgs: torch.Tensor) -> torch.Tensor:
-        if self.pytorch_normalization == "sdpcrown":
-            means = torch.tensor([125.3, 123.0, 113.9], device=imgs.device, dtype=imgs.dtype) / 255
-            stds = torch.tensor([0.225, 0.225, 0.225], device=imgs.device, dtype=imgs.dtype)
-            return (imgs - means.view(1, 3, 1, 1)) / stds.view(1, 3, 1, 1)
-        return imgs
+        return apply_pytorch_normalization(imgs, self.pytorch_normalization)
 
     def _resolve_target_size(self) -> tuple[int, int]:
         if self.classifier_type in {"onnx", "pytorch"}:

@@ -3,14 +3,14 @@ ONNX Classifier wrapper for integration with diffusion denoised smoothing experi
 This module provides a PyTorch-compatible interface for ONNX models.
 """
 import os
-from pathlib import Path
+
 import numpy as np
 import onnxruntime as ort
+import torch
+import torch.nn as nn
 
 from ..utils.utils import print_onnx_device_status
 
-import torch
-import torch.nn as nn
 
 class ONNXClassifier(nn.Module):
     """

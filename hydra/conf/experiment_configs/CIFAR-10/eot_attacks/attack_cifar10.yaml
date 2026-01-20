@@ -27,15 +27,12 @@ pytorch_normalization: "sdpcrown"
 experiment_tag: "pgd_eot_attack_cifar10"
 
 attack:
-  # Attack objective: untargeted by default (flip away from true label)
   targeted: false
 
   # PGD hyperparameters
-  norm: "l2"  # kept for clarity; attack implementation is L2-only
-  # Attack epsilon is set per-sample to the certified radius (R from certification).
+  norm: "l2"
   random_start: true
   early_stop: true
-  # Account for inputs not in [0,1] / normalized model inputs
   bounds: null
   std_rescale_factor: null
 
@@ -48,25 +45,18 @@ attack:
   cert_batch_size: 200
   
   # Smoothed prediction at x_adv for success criterion
-  eval_n: 10000
   eval_alpha: 0.001
-  eval_batch_size: 200
   log_every: 10
 
   # Also estimate the minimum L2 radius where an adversarial exists (may be outside certified radius).
   min_radius_search:
-    enabled: true
-    max_eps_l2: 1.5
-    # Provide either an explicit epsilon schedule (like rs_rd/scripts/adv_attack.py),
     epsilon_start: 0.0
     epsilon_stop: 4.0
-    epsilon_step: 0.05
-    restarts: 1
+    epsilon_step: 0.03
+    restarts: 3
     eval_n: 1000
     eval_alpha: 0.001
     eval_batch_size: 200
-    num_iter: 50
-    eot_samples: 10
 
 
   #load certify run

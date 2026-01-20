@@ -62,7 +62,7 @@ def main(cfg: DictConfig) -> None:
     attack_cfg = cfg.attack
     attack_only_if_correct = bool(attack_cfg.get("attack_only_if_correct", True))
     sigma_target_multiplier = float(attack_cfg.get("sigma_target_multiplier", 2.0))
-    eval_n = int(attack_cfg.get("eval_n", 10000))
+    eval_n = int(attack_cfg.get("eval_n", 100))
     eval_alpha = float(attack_cfg.get("eval_alpha", 0.001))
     eval_batch_size = int(attack_cfg.get("eval_batch_size", cfg.get("batch_size", 200)))
     within_cert_tol = float(attack_cfg.get("within_cert_tol", 1e-6))
@@ -76,7 +76,7 @@ def main(cfg: DictConfig) -> None:
     bounds = None if bounds_cfg in (None, "none") else (float(bounds_cfg[0]), float(bounds_cfg[1]))
     # Randomized smoothing certifies robustness in the input space of `x` passed to the pipeline (pixel space).
     # In this RS pipeline, any dataset normalization happens *inside* the classifier, so we must NOT rescale epsilons.
-    random_start = bool(attack_cfg.get("random_start", False))
+    random_start = bool(attack_cfg.get("random_start", True))
     norm = str(attack_cfg.get("norm", "l2"))
     attack_num_iter = int(attack_cfg.get("num_iter", 100))
     attack_eot_samples = int(attack_cfg.get("eot_samples", 20))
@@ -131,13 +131,12 @@ def main(cfg: DictConfig) -> None:
         summary_df_path=summary_df_path,
         verifier_string=verifier_string,
     )
-
-    # Optional: search for the minimum L2 radius where an adversarial exists (may be outside certified radius).
+    #binary search settings
     search_cfg = attack_cfg.get("min_radius_search", {})
     search_eps_start = search_cfg.get("epsilon_start", None)
     search_eps_stop = search_cfg.get("epsilon_stop", None)
     search_eps_step = search_cfg.get("epsilon_step", None)
-    search_eval_n = int(search_cfg.get("eval_n", max(200, min(eval_n, 2000))))
+    search_eval_n = int(search_cfg.get("eval_n", max(200, min(eval_n, 100))))
     search_eval_alpha = float(search_cfg.get("eval_alpha", eval_alpha))
     search_eval_batch_size = int(search_cfg.get("eval_batch_size", eval_batch_size))
     search_num_iter = int(search_cfg.get("num_iter", min(attack_num_iter, 40)))

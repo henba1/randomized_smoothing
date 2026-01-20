@@ -7,7 +7,7 @@ partition: gpu_a100
 gpus_per_node: 1
 cpus_per_task: 18
 mem_gb: 120
-timeout_min: 300
+timeout_min: 3000
 
 
 name: certify_cifar10_${hydra.job.name}

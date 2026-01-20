@@ -1,0 +1,62 @@
+# @package _global_
+# PGD-EOT attack configuration for CIFAR-10 randomized smoothing defense.
+
+defaults:
+  - /base/defaults@_global_
+  - /models/cifar10_convlarge@_global_
+  - override /hydra/launcher: submitit_slurm_cifar10
+  - _self_
+
+sample_size: 181
+#random_seed: 42
+sample_correct_predictions: true
+sample_stratified: false
+
+sigma: 0.25
+N0: 100
+N: 100000
+batch_size: 200
+alpha: 0.001
+
+split: "test"
+dataset_name: "CIFAR-10"
+
+classifier_type: "pytorch"
+classifier_name: "cifar10_convlarge"
+pytorch_normalization: "sdpcrown"
+experiment_tag: "pgd_eot_attack_cifar10"
+
+attack:
+  targeted: false
+
+  norm: "l2"
+  random_start: true
+  bounds: null
+
+  attack_only_if_correct: true
+
+  sigma: 0.25
+  cert_N0: 100
+  cert_N: 100000
+  cert_alpha: 0.001
+  cert_batch_size: 200
+
+  
+  # Smoothed prediction at x_adv for success criterion
+  eval_alpha: 0.001
+  log_every: 10
+
+  # Also estimate the minimum L2 radius where an adversarial exists (may be outside certified radius).
+  min_radius_search:
+    epsilon_start: 0.0
+    epsilon_stop: 4.0
+    epsilon_step: 0.03
+    restarts: 2
+
+  #load certify run
+  certify_run:
+    enabled: true
+    path: /gpfs/work2/0/prjs1681/runs/results/CIFAR-10/sdp_compar_conv_large_certify_certification_cifar_10_cifar10_convlarge_20260119_113631_228854
+    sigma_tol: 1e-6
+
+

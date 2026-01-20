@@ -106,10 +106,16 @@ class MinRadiusAttackVerifier:
         self.eval_batch_size = int(eval_batch_size)
         self.abstain_int = int(abstain_int)
 
+        # Best (smallest-epsilon) adversarial found so far during the verifier calls.
+        self.best_sat_epsilon: float | None = None
+        self.best_sat_x_adv: torch.Tensor | None = None
+        self.best_sat_pred_int: int | None = None
+
     def verify(self, verification_context: VerificationContext, epsilon: float) -> CompleteVerificationData:  # noqa: ARG002
         start = time.time()
         is_sat = False
         pred_try_int = self.abstain_int
+        x_sat: torch.Tensor | None = None
 
         for _ in range(max(1, self.restarts)):
             attacker_eps = EOTPGDAttack(
@@ -134,7 +140,15 @@ class MinRadiusAttackVerifier:
             pred_try_int = int(pred_try)
             if (pred_try_int != self.abstain_int) and (pred_try_int != self.cert_pred_int):
                 is_sat = True
+                x_sat = x_try
                 break
+
+        if is_sat:
+            eps_f = float(epsilon)
+            if self.best_sat_epsilon is None or eps_f < self.best_sat_epsilon:
+                self.best_sat_epsilon = eps_f
+                self.best_sat_x_adv = x_sat.detach() if x_sat is not None else None
+                self.best_sat_pred_int = int(pred_try_int)
 
         duration = time.time() - start
         return CompleteVerificationData(

@@ -7,23 +7,25 @@ import time
 from pathlib import Path
 
 import torch
+
 from ada_verona import (
     BinarySearchEpsilonValueEstimator,
     create_experiment_directory,
     EOTPGDAttack,
+    DataPoint,
+    EpsilonStatus,
+    VerificationContext,
+    VerificationResult,
+    One2AnyPropertyGenerator,
     get_balanced_sample,
     get_dataset_config,
     get_dataset_dir,
     get_models_dir,
     get_results_dir,
     get_sample,
-    save_original_indices,
+    save_original_indices
 )
-from ada_verona.database.dataset.data_point import DataPoint
-from ada_verona.database.epsilon_status import EpsilonStatus
-from ada_verona.database.verification_context import VerificationContext
-from ada_verona.database.verification_result import CompleteVerificationData, VerificationResult
-from ada_verona.verification_module.property_generator.one2any_property_generator import One2AnyPropertyGenerator
+
 from omegaconf import DictConfig, OmegaConf
 
 from shared.utils.diffusion_timestep import find_t_for_sigma
@@ -132,7 +134,6 @@ def main(cfg: DictConfig) -> None:
 
     # Optional: search for the minimum L2 radius where an adversarial exists (may be outside certified radius).
     search_cfg = attack_cfg.get("min_radius_search", {})
-    do_min_radius_search = bool(search_cfg.get("enabled", True))
     search_eps_start = search_cfg.get("epsilon_start", None)
     search_eps_stop = search_cfg.get("epsilon_stop", None)
     search_eps_step = search_cfg.get("epsilon_step", None)
@@ -175,7 +176,6 @@ def main(cfg: DictConfig) -> None:
             "attack_num_iter": attack_num_iter,
             "attack_eot_samples": attack_eot_samples,
             "within_cert_tol": within_cert_tol,
-            "min_radius_search_enabled": do_min_radius_search,
             "min_radius_search_epsilon_start": search_eps_start,
             "min_radius_search_epsilon_stop": search_eps_stop,
             "min_radius_search_epsilon_step": search_eps_step,
@@ -217,8 +217,8 @@ def main(cfg: DictConfig) -> None:
         t,
         sample_correct_predictions=bool(cfg.get("sample_correct_predictions", True)),
     )
+    # Define property generator and network wrapper for the attack
     property_generator = One2AnyPropertyGenerator()
-
     dummy_network = NamedNetwork(name=verifier_string)
 
     certify_samples = None
@@ -310,7 +310,7 @@ def main(cfg: DictConfig) -> None:
     setup_signal_handler(csv_writer, tracker, output_file, get_summary_params)
 
     with open(output_file, "w") as f:
-        f.write("original_idx\tlabel\tcert_pred\tcert_radius_l2\tadv_pred\tsuccess_within_cert\tlinf\tl2\ttime\n")
+        f.write("original_idx\tlabel\tcert_pred\tcert_radius_l2\tadv_pred\tsuccess_within_cert\tmax_abs_delta\tl2_delta\ttime\n")
         for i in range(len(dataset)):
             original_idx = int(original_indices[i])
             x, label = dataset[i]
@@ -353,11 +353,10 @@ def main(cfg: DictConfig) -> None:
 
             adv_pred_int = cert_pred_int
             adv_status = Smooth.ABSTAIN
-            within_cert_ball = False
             success_within_cert = False
-            linf = 0.0
-            l2 = 0.0
-            artifact_path: str | None = None
+            max_abs_delta = 0.0
+            l2_delta = 0.0
+            image_path: str | None = None
             attack_eps_l2 = 0.0
             attack_step_size = 0.0
             min_adv_radius_l2: float | None = None
@@ -377,13 +376,14 @@ def main(cfg: DictConfig) -> None:
                     randomise=random_start,
                     norm=norm,
                     bounds=bounds,
-                    std_rescale_factor=None,
+                    std_rescale_factor=None, #not needed for RS
                 )
                 x_adv = attacker.execute(attack_model, x_b, y_attack, epsilon=float(attack_eps_l2))
 
-                delta = x_adv - x_b
-                linf = float(delta.abs().amax().detach().cpu())
-                l2 = float(delta.view(delta.shape[0], -1).norm(p=2, dim=1).mean().detach().cpu())
+                best_adv_x: torch.Tensor | None = None
+                best_adv_pred_int: int | None = None
+                best_adv_l2: float | None = None
+                best_adv_linf: float | None = None
 
                 effective_eps = float(attack_eps_l2)
                 if step_size_rel is not None:
@@ -394,19 +394,23 @@ def main(cfg: DictConfig) -> None:
                 adv_pred = smoothed.predict(x_adv.squeeze(0), n=eval_n, alpha=eval_alpha, batch_size=eval_batch_size)
                 adv_pred_int = int(adv_pred)
                 adv_status = adv_pred_int
-                within_cert_ball = l2 <= (cert_radius_l2 + within_cert_tol)
                 flipped = (adv_pred_int != Smooth.ABSTAIN) and (adv_pred_int != cert_pred_int)
-                success_within_cert = flipped and within_cert_ball
-                n_success += int(success_within_cert)
 
-                saved = try_save_images(images_dir, image_id=original_idx, x=x_b, x_adv=x_adv)
-                if saved:
-                    artifact_path = str(saved[-1])
-                    for p in saved:
-                        tracker.log_asset(str(p))
-                # Upper-bounding search for minimum epsilon (L2) to cause a flip of smoothed prediction
-                # relative to certified class. (may be > certified radius).
-                if do_min_radius_search:
+                if flipped:
+                    delta = x_adv - x_b
+                    best_adv_x = x_adv
+                    best_adv_pred_int = adv_pred_int
+                    best_adv_linf = float(delta.abs().amax().detach().cpu())
+                    best_adv_l2 = float(delta.view(delta.shape[0], -1).norm(p=2, dim=1).mean().detach().cpu())
+
+                initial_success_within_cert = bool(
+                    flipped and (best_adv_l2 is not None) and (best_adv_l2 <= (cert_radius_l2 + within_cert_tol))
+                )
+
+                # run min-radius search if we did not already find an adversarial within the certified region -
+                # if we did find one, the RS certificate is already broken and we can skip binary search.
+                do_search_this_sample = bool(not initial_success_within_cert)
+                if do_search_this_sample:
                     verifier = MinRadiusAttackVerifier(
                         attack_model=attack_model,
                         x_b=x_b,
@@ -425,7 +429,6 @@ def main(cfg: DictConfig) -> None:
                         abstain_int=Smooth.ABSTAIN,
                     )
 
-                    #Construct epsilon grid and run ada_verona binary search over it.
                     if search_eps_start is None or search_eps_stop is None or search_eps_step is None:
                         raise ValueError(
                             "min_radius_search requires an explicit epsilon schedule: "
@@ -463,6 +466,39 @@ def main(cfg: DictConfig) -> None:
                         sat_values = [x.value for x in epsilon_status_list if x.result == VerificationResult.SAT]
                         min_adv_radius_l2 = float(min(sat_values)) if sat_values else None
 
+                        if verifier.best_sat_x_adv is not None and verifier.best_sat_epsilon is not None:
+                            best_adv_x = verifier.best_sat_x_adv
+                            best_adv_pred_int = int(verifier.best_sat_pred_int) if verifier.best_sat_pred_int is not None else None
+                            attack_eps_l2 = float(verifier.best_sat_epsilon)
+                            if step_size_rel is not None:
+                                attack_step_size = float(step_size_rel) * float(attack_eps_l2)
+                            elif step_size_abs is not None:
+                                attack_step_size = float(step_size_abs)
+                            delta = best_adv_x - x_b
+                            best_adv_linf = float(delta.abs().amax().detach().cpu())
+                            best_adv_l2 = float(delta.view(delta.shape[0], -1).norm(p=2, dim=1).mean().detach().cpu())
+
+                search_success_within_cert = bool(
+                    min_adv_radius_l2 is not None and min_adv_radius_l2 <= (cert_radius_l2 + within_cert_tol)
+                )
+                success_within_cert = bool(initial_success_within_cert or search_success_within_cert)
+
+                if best_adv_x is not None and best_adv_l2 is not None:
+                    if best_adv_pred_int is not None:
+                        adv_pred_int = int(best_adv_pred_int)
+                        adv_status = adv_pred_int
+
+                    max_abs_delta = float(best_adv_linf) if best_adv_linf is not None else 0.0
+                    l2_delta = float(best_adv_l2) if best_adv_l2 is not None else 0.0
+
+                    saved = try_save_images(images_dir, image_id=original_idx, x=x_b, x_adv=best_adv_x)
+                    if saved:
+                        image_path = str(saved[-1])
+                        for p in saved:
+                            tracker.log_asset(str(p))
+
+                n_success += int(success_within_cert)
+
             after = time.time()
             total_num += 1
             duration = after - before
@@ -476,7 +512,6 @@ def main(cfg: DictConfig) -> None:
                 cert_radius_l2=cert_radius_l2,
                 adv_status=adv_status,
                 adv_pred=adv_pred_int,
-                within_cert_ball=within_cert_ball,
                 success_within_cert=success_within_cert,
                 min_adv_radius_l2=min_adv_radius_l2,
                 attack_name="pgd_eot",
@@ -484,10 +519,13 @@ def main(cfg: DictConfig) -> None:
                 step_size=attack_step_size,
                 num_iter=attack_num_iter,
                 eot_samples=attack_eot_samples,
-                linf=linf,
-                l2=l2,
+                search_num_iter=search_num_iter,
+                search_eot_samples=search_eot_samples,
+                search_restarts=search_restarts,
+                max_abs_delta=max_abs_delta,
+                l2_delta=l2_delta,
                 total_time=time_elapsed,
-                artifact_path=artifact_path,
+                image_path=image_path,
             )
 
             tracker.log_metrics(
@@ -498,10 +536,9 @@ def main(cfg: DictConfig) -> None:
                     "cert_pred": cert_pred_int,
                     "cert_radius_l2": cert_radius_l2,
                     "adv_pred": adv_pred_int,
-                    "within_cert_ball": int(within_cert_ball),
                     "success_within_cert": int(success_within_cert),
-                    "attack_linf": linf,
-                    "attack_l2": l2,
+                    "max_abs_delta": max_abs_delta,
+                    "l2_delta": l2_delta,
                     "n_certified": n_certified,
                     "n_attacked": n_attacked,
                     "n_success": n_success,
@@ -514,7 +551,7 @@ def main(cfg: DictConfig) -> None:
 
             f.write(
                 f"{original_idx}\t{label}\t{cert_pred_int}\t{cert_radius_l2:.6f}\t{adv_pred_int}\t"
-                f"{int(success_within_cert)}\t{linf:.6f}\t{l2:.6f}\t{time_elapsed}\n"
+                f"{int(success_within_cert)}\t{max_abs_delta:.6f}\t{l2_delta:.6f}\t{time_elapsed}\n"
             )
             f.flush()
 

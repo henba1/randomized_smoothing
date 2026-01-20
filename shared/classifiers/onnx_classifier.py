@@ -110,13 +110,11 @@ class ONNXClassifier(nn.Module):
         Returns:
             ONNXOutput object with logits attribute for compatibility
         """
-        # Convert PyTorch tensor to numpy
         if isinstance(x, torch.Tensor):
             x_np = x.detach().cpu().numpy()
         else:
             x_np = x
         
-        # Ensure input is float32
         if x_np.dtype != np.float32:
             x_np = x_np.astype(np.float32)
         

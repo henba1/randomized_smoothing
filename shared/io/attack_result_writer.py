@@ -20,18 +20,20 @@ class AttackCSVWriter:
         "cert_radius_l2",
         "adv_status",
         "adv_pred",
-        "within_cert_ball",
         "success_within_cert",
         "min_adv_radius_l2",
         "attack",
         "attack_eps_l2",
         "step_size",
-        "num_iter",
-        "eot_samples",
-        "linf",
-        "l2",
+        "num_iter",  # initial "sanity-check" PGD
+        "eot_samples",  # initial "sanity-check" PGD
+        "search_num_iter",
+        "search_eot_samples",
+        "search_restarts",
+        "max_abs_delta",
+        "l2_delta",
         "total_time",
-        "artifact_path",
+        "image_path",
     ]
 
     def __init__(
@@ -63,7 +65,6 @@ class AttackCSVWriter:
         cert_radius_l2: float,
         adv_status: int,
         adv_pred: int,
-        within_cert_ball: bool,
         success_within_cert: bool,
         min_adv_radius_l2: float | None,
         attack_name: str,
@@ -71,10 +72,13 @@ class AttackCSVWriter:
         step_size: float,
         num_iter: int,
         eot_samples: int,
-        linf: float,
-        l2: float,
+        search_num_iter: int,
+        search_eot_samples: int,
+        search_restarts: int,
+        max_abs_delta: float,
+        l2_delta: float,
         total_time: str,
-        artifact_path: str | None,
+        image_path: str | None,
     ) -> None:
         row = {
             "network": self.verifier_string,
@@ -85,7 +89,6 @@ class AttackCSVWriter:
             "cert_radius_l2": cert_radius_l2,
             "adv_status": adv_status,
             "adv_pred": adv_pred,
-            "within_cert_ball": int(within_cert_ball),
             "success_within_cert": int(success_within_cert),
             "min_adv_radius_l2": float(min_adv_radius_l2) if min_adv_radius_l2 is not None else np.nan,
             "attack": attack_name,
@@ -93,10 +96,13 @@ class AttackCSVWriter:
             "step_size": step_size,
             "num_iter": num_iter,
             "eot_samples": eot_samples,
-            "linf": linf,
-            "l2": l2,
+            "search_num_iter": int(search_num_iter),
+            "search_eot_samples": int(search_eot_samples),
+            "search_restarts": int(search_restarts),
+            "max_abs_delta": float(max_abs_delta),
+            "l2_delta": float(l2_delta),
             "total_time": total_time,
-            "artifact_path": artifact_path if artifact_path is not None else np.nan,
+            "image_path": image_path if image_path is not None else np.nan,
         }
 
         df = pd.DataFrame([row])
@@ -106,8 +112,8 @@ class AttackCSVWriter:
             df.to_csv(self.results_df_path, mode="a", header=False, index=False)
 
         self._success_flags.append(bool(success_within_cert))
-        self._linf_values.append(float(linf))
-        self._l2_values.append(float(l2))
+        self._linf_values.append(float(max_abs_delta))
+        self._l2_values.append(float(l2_delta))
 
     def create_summary(
         self,
@@ -136,8 +142,8 @@ class AttackCSVWriter:
             "step_size": [step_size],
             "num_iter": [num_iter],
             "eot_samples": [eot_samples],
-            "avg_linf": [avg_linf],
-            "avg_l2": [avg_l2],
+            "mean_max_abs_delta": [avg_linf],
+            "mean_l2_delta": [avg_l2],
             "model_name": [model_name],
             "total_duration_seconds": [total_duration],
         }

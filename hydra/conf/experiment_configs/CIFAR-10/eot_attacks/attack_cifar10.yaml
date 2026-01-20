@@ -1,0 +1,78 @@
+# @package _global_
+# PGD-EOT attack configuration for CIFAR-10 randomized smoothing defense.
+
+defaults:
+  - /base/defaults@_global_
+  - /models/cifar10_convlarge@_global_
+  - override /hydra/launcher: submitit_slurm_cifar10
+  - _self_
+
+sample_size: 10
+#random_seed: 42
+sample_correct_predictions: true
+sample_stratified: false
+
+sigma: 0.25
+N0: 100
+N: 100000
+batch_size: 200
+alpha: 0.001
+
+split: "test"
+dataset_name: "CIFAR-10"
+
+classifier_type: "pytorch"
+classifier_name: "cifar10_convlarge"
+pytorch_normalization: "sdpcrown"
+experiment_tag: "pgd_eot_attack_cifar10"
+
+attack:
+  # Attack objective: untargeted by default (flip away from true label)
+  targeted: false
+
+  # PGD hyperparameters
+  norm: "l2"  # kept for clarity; attack implementation is L2-only
+  # Attack epsilon is set per-sample to the certified radius (R from certification).
+  random_start: true
+  early_stop: true
+  # Account for inputs not in [0,1] / normalized model inputs
+  bounds: null
+  std_rescale_factor: null
+
+  # Evaluation / bookkeeping
+  attack_only_if_correct: true
+  # Certification parameters (override global N0/N/alpha/batch_size if desired)
+  cert_N0: 100
+  cert_N: 100000
+  cert_alpha: 0.001
+  cert_batch_size: 200
+  
+  # Smoothed prediction at x_adv for success criterion
+  eval_n: 10000
+  eval_alpha: 0.001
+  eval_batch_size: 200
+  log_every: 10
+
+  # Also estimate the minimum L2 radius where an adversarial exists (may be outside certified radius).
+  min_radius_search:
+    enabled: true
+    max_eps_l2: 1.5
+    # Provide either an explicit epsilon schedule (like rs_rd/scripts/adv_attack.py),
+    epsilon_start: 0.0
+    epsilon_stop: 4.0
+    epsilon_step: 0.05
+    restarts: 1
+    eval_n: 1000
+    eval_alpha: 0.001
+    eval_batch_size: 200
+    num_iter: 50
+    eot_samples: 10
+
+
+  #load certify run
+  certify_run:
+    enabled: true
+    path: /home/jvrijn/code/rs/verif/VERONA_rs_rd/rs_rd/randomized_smoothing/example_input_folder
+    sigma_tol: 1e-6
+
+

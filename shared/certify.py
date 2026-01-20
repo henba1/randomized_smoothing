@@ -24,6 +24,7 @@ from shared.utils.utils import (
     get_diffusion_model_path_name_tuple,
     override_args_with_cli,
 )
+from shared.utils.diffusion_timestep import find_t_for_sigma
 
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("dulwich").setLevel(logging.WARNING)
@@ -223,14 +224,8 @@ def main(args=None, defaults=None):
     tracker.log_asset(str(indices_file))
     
     # Get the timestep t corresponding to noise level sigma
-    target_sigma = sigma * 2
-    real_sigma = 0
-    t = 0
-    while real_sigma < target_sigma:
-        t += 1
-        a = model.diffusion.sqrt_alphas_cumprod[t]
-        b = model.diffusion.sqrt_one_minus_alphas_cumprod[t]
-        real_sigma = b / a
+    # Note: target_multiplier=2 matches the existing [0,1] -> [-1,1] scaling in the diffusion pipeline.
+    t = find_t_for_sigma(diffusion=model.diffusion, sigma=sigma, target_multiplier=2.0)
     
     # Define smoothed classifier
     smoothed_classifier = Smooth(model, num_classes, sigma, t, sample_correct_predictions=sample_correct_predictions)

@@ -35,8 +35,10 @@ attack:
   min_radius_search:
     enabled: true
     max_eps_l2: 3.0
-    coarse_steps: 10
-    binary_steps: 8
+    epsilon_start: 0.0
+    epsilon_stop: 3.0
+    epsilon_step: 0.05
+    restarts: 1
     eval_n: 500
     eval_alpha: 0.001
     eval_batch_size: 200

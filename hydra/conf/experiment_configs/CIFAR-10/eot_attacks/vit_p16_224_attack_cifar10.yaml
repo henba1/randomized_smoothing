@@ -1,13 +1,13 @@
 # @package _global_
-# PGD-EOT attack configuration for CIFAR-10 randomized smoothing defense.
+# PGD-EOT attack configuration for CIFAR-10 randomized smoothing defense (HuggingFace ViT).
 
 defaults:
   - /base/defaults@_global_
-  - /models/cifar10_convlarge@_global_
+  - /models/vit_p16_224@_global_
   - override /hydra/launcher: submitit_slurm_cifar10
   - _self_
 
-sample_size: 10
+sample_size: 1750 #1722 real samples
 #random_seed: 42
 sample_correct_predictions: true
 sample_stratified: false
@@ -21,29 +21,25 @@ alpha: 0.001
 split: "test"
 dataset_name: "CIFAR-10"
 
-classifier_type: "pytorch"
-classifier_name: "cifar10_convlarge"
-pytorch_normalization: "sdpcrown"
-experiment_tag: "pgd_eot_attack_cifar10"
+classifier_type: "huggingface"
+classifier_name: "aaraki/vit-base-patch16-224-in21k-finetuned-cifar10"
+experiment_tag: "pgd_eot_attack_cifar10_vit_p16_224"
 
 attack:
   targeted: false
 
-  # PGD hyperparameters
   norm: "l2"
   random_start: true
-  early_stop: true
   bounds: null
-  std_rescale_factor: null
 
-  # Evaluation / bookkeeping
   attack_only_if_correct: true
-  # Certification parameters (override global N0/N/alpha/batch_size if desired)
+
+  sigma: 0.25
   cert_N0: 100
   cert_N: 100000
   cert_alpha: 0.001
   cert_batch_size: 200
-  
+
   # Smoothed prediction at x_adv for success criterion
   eval_alpha: 0.001
   log_every: 10
@@ -52,17 +48,12 @@ attack:
   min_radius_search:
     epsilon_start: 0.0
     epsilon_stop: 4.0
-    epsilon_step: 0.03
-    restarts: 3
-    eval_n: 1000
-    eval_alpha: 0.001
-    eval_batch_size: 200
+    epsilon_step: 0.05
+    restarts: 1
 
-
-  #load certify run
+  # Load a previous certify run (must match sigma + classifier). Disabled by default for this template.
   certify_run:
-    enabled: true
-    path: /home/jvrijn/code/rs/verif/VERONA_rs_rd/rs_rd/randomized_smoothing/example_input_folder
+    enabled: false
+    path: /gpfs/work2/0/prjs1681/runs/results/CIFAR-10/certification_cifar_10_vit_base_patch16_224_in21k_finetuned_cifar10_20260101_205741_796722
     sigma_tol: 1e-6
-
 

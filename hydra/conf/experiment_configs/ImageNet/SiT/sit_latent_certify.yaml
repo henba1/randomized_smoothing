@@ -1,0 +1,18 @@
+# @package _global_
+
+defaults:
+  - /base/defaults_imagenet@_global_
+  - /models/beit_large_patch16_512@_global_
+  - override /hydra/launcher: submitit_slurm_imagenet
+  - _self_
+
+mode: certify
+
+random_seed: 42
+sample_size: 100
+experiment_tag: "sit_latent_certify"
+
+denoiser_backend: sit_latent
+
+#sit_vae_id: stabilityai/sd-vae-ft-mse
+

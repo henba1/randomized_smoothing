@@ -65,8 +65,11 @@ def main(args=None, defaults=None):
     classifier_type = defaults.get("classifier_type", "huggingface")
     classifier_name = defaults.get("classifier_name")
     pytorch_normalization = defaults.get("pytorch_normalization", "none")
+    denoiser_backend = defaults.get("denoiser_backend", "guided_diffusion")
+    diffusion_model_subdir = "DDPM" if denoiser_backend == "guided_diffusion" else "SiT"
     experiment_tag = defaults.get("experiment_tag", None)
     
+
     default_params = {
         "dataset_name": dataset_name,
         "sigma": sigma,
@@ -82,6 +85,7 @@ def main(args=None, defaults=None):
         "classifier_type": classifier_type,
         "classifier_name": classifier_name,
         "pytorch_normalization": pytorch_normalization,
+        "denoiser_backend": denoiser_backend,
     }
     params = override_args_with_cli(default_params, args)
     (
@@ -99,7 +103,10 @@ def main(args=None, defaults=None):
         classifier_type,
         classifier_name,
         pytorch_normalization,
+        denoiser_backend,
     ) = params.values()
+
+
     
     classifier_name_short = classifier_name.split("/")[-1] if classifier_name else "unknown"
     
@@ -120,7 +127,7 @@ def main(args=None, defaults=None):
     
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     experiment_name = f"{classifier_name_short}_{sigma}_{dataset_name}_{timestamp}"
-    _, ddpm_model_name = get_diffusion_model_path_name_tuple(dataset_name)
+    _, ddpm_model_name = get_diffusion_model_path_name_tuple(dataset_name, diffusion_model_subdir)
     
     verifier_string = (
         f"RS_{classifier_name_short}_"
@@ -192,7 +199,6 @@ def main(args=None, defaults=None):
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
     
-    # Initialize model with specified classifier
     model = DiffusionRobustModel(
         classifier_type=classifier_type,
         classifier_name=classifier_name,
@@ -201,6 +207,8 @@ def main(args=None, defaults=None):
         device=device,
         image_size=image_size,
         pytorch_normalization=pytorch_normalization,
+        denoiser_backend=denoiser_backend,
+        model_subdir=diffusion_model_subdir,
     )
     
     sample_func = get_balanced_sample if sample_stratified else get_sample
@@ -509,6 +517,19 @@ def create_argument_parser():
         type=str,
         default=None,
         help="Dataset name (e.g., 'CIFAR-10', 'MNIST', 'ImageNet')"
+    )
+    parser.add_argument(
+        "--denoiser_backend",
+        type=str,
+        default=None,
+        choices=["guided_diffusion", "sit", "sit_latent"],
+        help="Denoiser backend to use (default: guided_diffusion).",
+    )
+    parser.add_argument(
+        "--denoiser_checkpoint_path",
+        type=str,
+        default=None,
+        help="Optional path to denoiser checkpoint. Required for denoiser_backend='sit'.",
     )
     return parser
 

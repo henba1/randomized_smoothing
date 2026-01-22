@@ -55,11 +55,9 @@ def main(cfg: DictConfig):
     classifier_type = cfg.classifier_type
     classifier_name = cfg.classifier_name
     pytorch_normalization = cfg.get("pytorch_normalization", "none")
+    denoiser_backend = cfg.get("denoiser_backend", "guided_diffusion")
+    diffusion_model_subdir = "DDPM" if denoiser_backend == "guided_diffusion" else "SiT"
     
-    # Debug: Print resolved config values
-    print(f"DEBUG: Resolved classifier_type = {repr(classifier_type)} (type: {type(classifier_type)})")
-    print(f"DEBUG: Resolved classifier_name = {repr(classifier_name)} (type: {type(classifier_name)})")
-
     classifier_name_short = classifier_name.split("/")[-1] if classifier_name else "unknown"
 
     dataset_config_map = get_dataset_config()
@@ -79,7 +77,7 @@ def main(cfg: DictConfig):
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     experiment_name = f"{classifier_name_short}_{sigma}_{dataset_name}_{timestamp}"
-    _, ddpm_model_name = get_diffusion_model_path_name_tuple(dataset_name)
+    _, ddpm_model_name = get_diffusion_model_path_name_tuple(dataset_name, diffusion_model_subdir)
 
     verifier_string = (
         f"RS_{classifier_name_short}_"
@@ -159,6 +157,8 @@ def main(cfg: DictConfig):
         device=device,
         image_size=image_size,
         pytorch_normalization=pytorch_normalization,
+        denoiser_backend=denoiser_backend,
+        model_subdir=diffusion_model_subdir,
     )
 
     sample_func = get_balanced_sample if sample_stratified else get_sample

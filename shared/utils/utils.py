@@ -25,14 +25,17 @@ def print_huggingface_device_status(model: torch.nn.Module, model_id: str) -> st
     return actual_device
 
 
-def get_diffusion_model_path_name_tuple(dataset_name: str) -> tuple[str, str]:
-    """Get the path to the diffusion model using $PRJS environment variable.
+def get_diffusion_model_path_name_tuple(dataset_name: str, model_subdir: str = "DDPM") -> tuple[str, str]:
+    """Get the path to a denoiser checkpoint using $PRJS environment variable.
 
     Args:
         dataset_name: Name of the dataset
+        model_subdir: Subdirectory under `$PRJS/models/<dataset_name>/` that contains the checkpoint.
+            Defaults to `"DDPM"` for backwards compatibility. If None, can also be set via the
+            `RS_DENOISER_SUBDIR` environment variable.
 
     Returns:
-        tuple: (Path to the diffusion model .pt file, Name of the diffusion model)
+        tuple: (Path to the model .pt file, Name of the model without extension)
 
     Raises:
         ValueError: If PRJS is not set, directory doesn't exist,
@@ -42,24 +45,20 @@ def get_diffusion_model_path_name_tuple(dataset_name: str) -> tuple[str, str]:
     if not prjs:
         raise ValueError("PRJS environment variable not set")
 
-    model_dir = os.path.join(prjs, "models", dataset_name, "DDPM")
-
+    model_dir = os.path.join(prjs, "models", dataset_name, model_subdir)
     if not os.path.isdir(model_dir):
         raise ValueError(f"Model directory not found: {model_dir}")
 
-    # Find the .pt file in the directory #TODO: this assumes only one file in dir
     model_files = [f for f in os.listdir(model_dir) if f.endswith(".pt")]
-
+    
     if len(model_files) == 0:
         raise ValueError(f"No .pt files found in {model_dir}")
     if len(model_files) > 1:
         raise ValueError(
             f"Multiple .pt files found in {model_dir}: {model_files}. "
-            f"Expected only one for the dataset {dataset_name}"
+            f"Expected only one for dataset={dataset_name} subdir={os.path.basename(model_dir)}"
         )
-
     return os.path.join(model_dir, model_files[0]), str(model_files[0].replace(".pt", ""))
-
 
 def print_onnx_device_status(provider_list: list, device_requested: str) -> str:
     """Print and return the actual device being used by ONNX Runtime.

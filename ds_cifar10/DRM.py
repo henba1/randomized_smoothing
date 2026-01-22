@@ -44,6 +44,8 @@ class DiffusionRobustModel(DiffusionRobustModelBase):
         device: torch.device | None = None, 
         image_size: tuple[int, int] | None = None,
         pytorch_normalization: str = "none",
+        *,
+        model_subdir: str,
     ):
         super().__init__(
             diffusion_args=Args(),
@@ -62,4 +64,5 @@ class DiffusionRobustModel(DiffusionRobustModelBase):
             timm_target_size=None,
             verbose=True,
             list_missing_models=True,
+            model_subdir=model_subdir,
         )

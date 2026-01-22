@@ -50,11 +50,12 @@ def main(cfg: DictConfig) -> None:
     random_seed = int(cfg.random_seed)
     sample_stratified = bool(cfg.get("sample_stratified", cfg.get("stratified", False)))
 
-    sigma = float(cfg.sigma)
     classifier_type = str(cfg.classifier_type)
     classifier_name = str(cfg.classifier_name)
     classifier_name_short = classifier_name.split("/")[-1] if classifier_name else "unknown"
     pytorch_normalization = str(cfg.get("pytorch_normalization", "none"))
+    denoiser_backend = str(cfg.get("denoiser_backend", "guided_diffusion"))
+    diffusion_model_subdir = "DDPM" if denoiser_backend == "guided_diffusion" else "SiT"
 
     experiment_type = str(cfg.get("experiment_type", "pgd_eot_attack"))
     experiment_tag = cfg.get("experiment_tag", None)
@@ -66,6 +67,7 @@ def main(cfg: DictConfig) -> None:
     eval_alpha = float(attack_cfg.get("eval_alpha", 0.001))
     eval_batch_size = int(attack_cfg.get("eval_batch_size", cfg.get("batch_size", 200)))
     within_cert_tol = float(attack_cfg.get("within_cert_tol", 1e-6))
+    sigma = float(cfg.get("sigma", 0.25))
     cert_N0 = int(attack_cfg.get("cert_N0", cfg.get("N0", 100)))
     cert_N = int(attack_cfg.get("cert_N", cfg.get("N", 100000)))
     cert_alpha = float(attack_cfg.get("cert_alpha", cfg.get("alpha", 0.001)))
@@ -97,7 +99,7 @@ def main(cfg: DictConfig) -> None:
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     experiment_name = f"{classifier_name_short}_{dataset_name}_{experiment_type}_{timestamp}"
-    _, ddpm_model_name = get_diffusion_model_path_name_tuple(dataset_name)
+    _, ddpm_model_name = get_diffusion_model_path_name_tuple(dataset_name, diffusion_model_subdir)
 
     tracker = CometTracker(
         experiment_name,
@@ -144,7 +146,7 @@ def main(cfg: DictConfig) -> None:
     search_restarts = int(search_cfg.get("restarts", 2))
 
     certify_run_cfg = attack_cfg.get("certify_run", {})
-    use_certify_run = bool(certify_run_cfg.get("enabled", False))
+    use_certify_run = bool(certify_run_cfg.get("enabled", True))
     certify_run_path = certify_run_cfg.get("path", None)
     certify_run_sigma_tol = float(certify_run_cfg.get("sigma_tol", 1e-6))
 
@@ -205,6 +207,8 @@ def main(cfg: DictConfig) -> None:
         device=device,
         image_size=image_size,
         pytorch_normalization=pytorch_normalization,
+        denoiser_backend=denoiser_backend,
+        model_subdir=diffusion_model_subdir,
     )
 
     t = find_t_for_sigma(diffusion=model.diffusion, sigma=sigma, target_multiplier=sigma_target_multiplier)

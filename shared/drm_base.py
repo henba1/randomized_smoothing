@@ -23,6 +23,7 @@ class DiffusionRobustModelBase(nn.Module):
         model_and_diffusion_defaults: Callable[[], dict],
         args_to_dict: Callable[[object, object], dict],
         load_state_dict_fn: Callable[[str, torch.device], dict],
+        diffusion_model_path: str | None = None,
         classifier_type: str,
         classifier_name: str | None,
         models_dir: str | None,
@@ -34,6 +35,7 @@ class DiffusionRobustModelBase(nn.Module):
         timm_target_size: tuple[int, int] | None = None,
         verbose: bool = False,
         list_missing_models: bool = False,
+        model_subdir: str = "DDPM",
     ):
         super().__init__()
         if pytorch_normalization not in {"none", "sdpcrown"}:
@@ -49,7 +51,8 @@ class DiffusionRobustModelBase(nn.Module):
         model, diffusion = create_model_and_diffusion(
             **args_to_dict(diffusion_args, model_and_diffusion_defaults().keys())
         )
-        diffusion_model_path, _ = get_diffusion_model_path_name_tuple(dataset_name)
+        if diffusion_model_path is None:
+            diffusion_model_path, _ = get_diffusion_model_path_name_tuple(dataset_name, model_subdir)
         state_dict = load_state_dict_fn(diffusion_model_path, device)
         model.load_state_dict(state_dict)
         model.eval().to(device)

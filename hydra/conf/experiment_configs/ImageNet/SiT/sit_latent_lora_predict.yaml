@@ -1,0 +1,25 @@
+# @package _global_
+
+defaults:
+  - /base/defaults_imagenet@_global_
+  - /models/beit_large_patch16_512@_global_
+  - override /hydra/launcher: submitit_slurm_imagenet
+  - _self_
+
+mode: predict
+
+random_seed: 42
+sample_size: 1000
+experiment_tag: "sit_latent_lora_predict"
+
+sigma: 0.25
+N0: 100
+batch_size: 200
+alpha: 0.001
+
+denoiser_backend: sit_latent
+sit_vae_id: stabilityai/sd-vae-ft-mse
+
+# LoRA adapter produced by finetune job:
+sit_lora_path: ${oc.env:PRJS}/models/ImageNet/SiT/LoRA/sit_lora_sigma0p25.pt
+

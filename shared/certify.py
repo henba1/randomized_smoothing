@@ -66,7 +66,8 @@ def main(args=None, defaults=None):
     classifier_name = defaults.get("classifier_name")
     pytorch_normalization = defaults.get("pytorch_normalization", "none")
     denoiser_backend = defaults.get("denoiser_backend", "guided_diffusion")
-    diffusion_model_subdir = "DDPM" if denoiser_backend == "guided_diffusion" else "SiT"
+    sit_vae_id = defaults.get("sit_vae_id", "stabilityai/sd-vae-ft-mse")
+    sit_lora_path = defaults.get("sit_lora_path", None)
     experiment_tag = defaults.get("experiment_tag", None)
     
 
@@ -86,28 +87,31 @@ def main(args=None, defaults=None):
         "classifier_name": classifier_name,
         "pytorch_normalization": pytorch_normalization,
         "denoiser_backend": denoiser_backend,
+        "sit_vae_id": sit_vae_id,
+        "sit_lora_path": sit_lora_path,
     }
     params = override_args_with_cli(default_params, args)
-    (
-        dataset_name,
-        sigma,
-        sample_size,
-        random_seed,
-        N0,
-        N,
-        batch_size,
-        alpha,
-        sample_correct_predictions,
-        sample_stratified,
-        mode,
-        classifier_type,
-        classifier_name,
-        pytorch_normalization,
-        denoiser_backend,
-    ) = params.values()
+    dataset_name = params["dataset_name"]
+    sigma = params["sigma"]
+    sample_size = params["sample_size"]
+    random_seed = params["random_seed"]
+    N0 = params["N0"]
+    N = params["N"]
+    batch_size = params["batch_size"]
+    alpha = params["alpha"]
+    sample_correct_predictions = params["sample_correct_predictions"]
+    sample_stratified = params["sample_stratified"]
+    mode = params["mode"]
+    classifier_type = params["classifier_type"]
+    classifier_name = params["classifier_name"]
+    pytorch_normalization = params["pytorch_normalization"]
+    denoiser_backend = params["denoiser_backend"]
+    sit_vae_id = params["sit_vae_id"]
+    sit_lora_path = params["sit_lora_path"]
+
+    diffusion_model_subdir = "DDPM" if denoiser_backend == "guided_diffusion" else "SiT"
 
 
-    
     classifier_name_short = classifier_name.split("/")[-1] if classifier_name else "unknown"
     
     dataset_config_map = get_dataset_config()
@@ -189,7 +193,6 @@ def main(args=None, defaults=None):
     tracker.log_metric("experiment_start_time", start_time)
     
     # Import dataset-specific DRM modules
-    # Determine which dataset module to import based on dataset_name
     from shared.core import Smooth
     
     if dataset_name == "CIFAR-10":
@@ -199,6 +202,11 @@ def main(args=None, defaults=None):
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
     
+    model_kwargs = {}
+    if dataset_name == "ImageNet" and denoiser_backend == "sit_latent":
+        model_kwargs["sit_vae_id"] = sit_vae_id
+        model_kwargs["sit_lora_path"] = sit_lora_path
+
     model = DiffusionRobustModel(
         classifier_type=classifier_type,
         classifier_name=classifier_name,
@@ -209,6 +217,7 @@ def main(args=None, defaults=None):
         pytorch_normalization=pytorch_normalization,
         denoiser_backend=denoiser_backend,
         model_subdir=diffusion_model_subdir,
+        **model_kwargs,
     )
     
     sample_func = get_balanced_sample if sample_stratified else get_sample

@@ -18,12 +18,11 @@ def _import_sit_models():
     repo lives in `rs_rd/SiT/`, i.e. as a sibling directory. To keep integration minimal (no
     packaging/repo restructuring), we add `rs_rd/` to `sys.path` at runtime.
     """
-    rs_rd_dir = Path(__file__).resolve().parents[2]  # .../rs_rd
+    rs_rd_dir = Path(__file__).resolve().parents[2]
     if str(rs_rd_dir) not in sys.path:
         sys.path.insert(0, str(rs_rd_dir))
 
-    # SiT repo provides `SiT_models` factories.
-    from SiT.models import SiT_models  # type: ignore[import-not-found]
+    from SiT.models import SiT_models 
 
     return SiT_models
 
@@ -42,27 +41,26 @@ class UnconditionalSiTDenoiser(nn.Module):
         self.num_classes = int(num_classes)
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, **_kwargs) -> torch.Tensor:
-        # guided-diffusion calls the model with a 1-D timestep tensor.
+        # guided-diffusion calls the model with 1-D timestep tensor.
         if t.ndim != 1:
             raise ValueError(f"Expected t to have shape (B,), got {tuple(t.shape)}")
         if x.shape[0] != t.shape[0]:
             raise ValueError(f"Batch mismatch: x has B={x.shape[0]} but t has B={t.shape[0]}")
 
-        # SiT uses a LabelEmbedder with an extra "null" embedding at index == num_classes.
+        # SiT uses a LabelEmbedder with an extra "null" embedding at index == num_classes for unconditional inference
         y_null = torch.full((x.shape[0],), fill_value=self.num_classes, device=x.device, dtype=torch.long)
         return self.sit_model(x, t.float(), y_null)
 
 
 @dataclass(frozen=True)
 class SiTArgs:
-    # Model (image-space, to be trained/finetuned by you).
     image_size: int = 256
     sit_model_name: str = "SiT-B/8"
     num_classes: int = 1000
     in_channels: int = 3
     learn_sigma: bool = False  # keep diffusion simple (fixed variance) for compatibility
 
-    # Diffusion schedule (guided-diffusion style).
+    # keep guided-diffusion-style schedule for mapping sigma to timestep t
     diffusion_steps: int = 1000
     noise_schedule: str = "linear"
     timestep_respacing: str | None = None
@@ -77,7 +75,6 @@ def model_and_diffusion_defaults() -> dict:
 
 
 def args_to_dict(args: object, keys) -> dict:
-    # Mirror the guided-diffusion util: pull attributes by name.
     return {k: getattr(args, k) for k in keys}
 
 
@@ -98,7 +95,7 @@ def create_model_and_diffusion(
 ):
     if learn_sigma:
         raise ValueError(
-            "This SiT integration currently expects learn_sigma=False "
+            "This SiT integration expects learn_sigma=False "
             "(fixed variance diffusion), because SiT's reference implementation "
             "returns only the first half of channels when learn_sigma=True."
         )

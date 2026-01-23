@@ -11,30 +11,28 @@ from .guided_diffusion.script_util import create_gaussian_diffusion
 
 def _import_sit_models():
     """
-    Import the vendored SiT repo (sibling of `randomized_smoothing/`).
+    Import the SiT repo. Needs to be in /VERONA_rs_rd/rs_rd/SiT/
 
     We keep this local (instead of requiring an installed package) to minimize project overhead.
     """
-    rs_rd_dir = Path(__file__).resolve().parents[2]  # .../rs_rd
+    rs_rd_dir = Path(__file__).resolve().parents[2]
     if str(rs_rd_dir) not in sys.path:
         sys.path.insert(0, str(rs_rd_dir))
 
-    from SiT.models import SiT_models  # type: ignore[import-not-found]
+    from SiT.models import SiT_models 
 
     return SiT_models
 
 
 @dataclass(frozen=True)
 class SiTLatentArgs:
-    # SiT model (official checkpoints are trained in VAE latent space).
     image_size: int = 256
     sit_model_name: str = "SiT-XL/2"
     num_classes: int = 1000
     in_channels: int = 4
-    learn_sigma: bool = True  # matches official 256x256 checkpoint behavior
+    learn_sigma: bool = True 
 
-    # We keep a guided-diffusion-style schedule for mapping sigma -> integer timestep `t`
-    # (used by your RS scripts) and for a consistent comparison baseline.
+    # keep guided-diffusion-style schedule for maping sigma to timestep t
     diffusion_steps: int = 1000
     noise_schedule: str = "linear"
     timestep_respacing: str | None = None
@@ -68,7 +66,7 @@ def create_model_and_diffusion(
     rescale_learned_sigmas: bool,
 ):
     if image_size != 256:
-        raise ValueError("This SiT latent backend currently targets ImageNet 256x256.")
+        raise ValueError("This SiT latent model targets ImageNet 256x256.")
     if in_channels != 4:
         raise ValueError("SiT latent backend expects in_channels=4 (Stable Diffusion VAE latent channels).")
 

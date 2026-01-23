@@ -23,6 +23,8 @@ from shared.utils.utils import (
     get_device_with_diagnostics,
     get_diffusion_model_path_name_tuple,
 )
+import os
+from pathlib import Path
 
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("dulwich").setLevel(logging.WARNING)
@@ -57,6 +59,10 @@ def main(cfg: DictConfig):
     pytorch_normalization = cfg.get("pytorch_normalization", "none")
     denoiser_backend = cfg.get("denoiser_backend", "guided_diffusion")
     diffusion_model_subdir = "DDPM" if denoiser_backend == "guided_diffusion" else "SiT"
+    sit_vae_id = cfg.get("sit_vae_id", "stabilityai/sd-vae-ft-mse")
+    sit_lora_path = cfg.get("sit_lora_path", None)
+    if dataset_name == "ImageNet" and denoiser_backend == "sit_latent" and sit_lora_path is None:
+        sit_lora_path = str(Path(os.environ["PRJS"]) / "models" / "ImageNet" / "SiT" / "LoRA" / "sit_lora_sigma0p25.pt")
     
     classifier_name_short = classifier_name.split("/")[-1] if classifier_name else "unknown"
 
@@ -105,7 +111,6 @@ def main(cfg: DictConfig):
         experiment_tag=experiment_tag,
     )
 
-    # Output files
     result_df_path = experiment_folder / "result_df.csv"
     misclassified_df_path = experiment_folder / "misclassified_df.csv"
     abstained_df_path = experiment_folder / "abstained_df.csv"
@@ -149,6 +154,11 @@ def main(cfg: DictConfig):
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
 
+    model_kwargs = {}
+    if dataset_name == "ImageNet" and denoiser_backend == "sit_latent":
+        model_kwargs["sit_vae_id"] = sit_vae_id
+        model_kwargs["sit_lora_path"] = sit_lora_path
+
     model = DiffusionRobustModel(
         classifier_type=classifier_type,
         classifier_name=classifier_name,
@@ -159,6 +169,7 @@ def main(cfg: DictConfig):
         pytorch_normalization=pytorch_normalization,
         denoiser_backend=denoiser_backend,
         model_subdir=diffusion_model_subdir,
+        **model_kwargs,
     )
 
     sample_func = get_balanced_sample if sample_stratified else get_sample
@@ -250,7 +261,7 @@ def main(cfg: DictConfig):
                 # Use N0 for predict mode (faster, sufficient for prediction without certification)
                 prediction = smoothed_classifier.predict(x, N0, alpha, batch_size)
                 radius = 0.0
-            else:  # mode == "certify"
+            else: #certify
                 prediction, radius = smoothed_classifier.certify(x, N0, N, alpha, batch_size, label=label)
             after_time = time.time()
             

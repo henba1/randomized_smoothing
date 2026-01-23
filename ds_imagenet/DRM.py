@@ -13,6 +13,7 @@ from .sit_latent_backend import (
     create_model_and_diffusion as create_sit_latent_model_and_diffusion,
     model_and_diffusion_defaults as sit_latent_model_and_diffusion_defaults,
 )
+from shared.lora import LoRAConfig, inject_lora_, load_lora_checkpoint
 
 
 class Args:
@@ -66,6 +67,7 @@ class DiffusionRobustModel(DiffusionRobustModelBase):
         denoiser_backend: str,
         model_subdir: str,
         sit_vae_id: str = "stabilityai/sd-vae-ft-mse",
+        sit_lora_path: str | None = None,
     ):
         if denoiser_backend not in {"guided_diffusion", "sit_latent"}:
             raise ValueError("denoiser_backend must be one of {'guided_diffusion', 'sit_latent'}")
@@ -122,6 +124,16 @@ class DiffusionRobustModel(DiffusionRobustModelBase):
         self._sit_vae.requires_grad_(False)
         self.sit_vae_id = sit_vae_id
 
+        # apply LoRA weights to the SiT backbone for one-shot denoising fine-tuning
+        if sit_lora_path is not None:
+            lora_cfg, lora_sd = load_lora_checkpoint(sit_lora_path, device=self.device)
+            replaced = inject_lora_(self.model, lora_cfg)
+            if replaced == 0:
+                raise RuntimeError("Loaded LoRA checkpoint but injected 0 modules; check lora_targets.")
+            missing, unexpected = self.model.load_state_dict(lora_sd, strict=False)
+            if unexpected:
+                raise RuntimeError(f"Unexpected keys when loading LoRA: {unexpected}")
+
     def denoise(self, x_start, t, multistep: bool = False, *, enable_grad: bool = False):
         """
         Backend switch:
@@ -139,6 +151,13 @@ class DiffusionRobustModel(DiffusionRobustModelBase):
         with grad_ctx:
             batch_size = x_start.shape[0]
 
+            # Match the existing RS pipeline: first add Gaussian noise in *pixel space* using the same
+            # guided-diffusion forward process (q_sample). This keeps the smoothed classifier's noise model
+            # consistent with how `t` is chosen from `sigma`.
+            t_batch = torch.full((batch_size,), t, device=self.device, dtype=torch.long)
+            noise = torch.randn_like(x_start)
+            x_t_start = self.diffusion.q_sample(x_start=x_start, t=t_batch, noise=noise)
+
             # The official SiT ImageNet 256x256 checkpoints operate in SD-VAE latent space with spatial size 32x32.
             # That corresponds to 256x256 inputs (since the VAE downsamples by 8).
             #
@@ -146,9 +165,9 @@ class DiffusionRobustModel(DiffusionRobustModelBase):
             # "Input height (28) doesn't match model (32)."
             #
             # We upsample to 256x256 here to keep the denoiser backend functional.
-            if x_start.shape[-2:] != (256, 256):
-                x_start = torch.nn.functional.interpolate(
-                    x_start, size=(256, 256), mode="bicubic", antialias=True
+            if x_t_start.shape[-2:] != (256, 256):
+                x_t_start = torch.nn.functional.interpolate(
+                    x_t_start, size=(256, 256), mode="bicubic", antialias=True
                 )
 
             # Map the RS timestep `t` (from guided-diffusion schedule) to a SiT linear interpolant time τ in (0, 1):
@@ -162,21 +181,29 @@ class DiffusionRobustModel(DiffusionRobustModelBase):
 
             tau_t = torch.full((batch_size,), tau, device=self.device, dtype=torch.float32)
 
-            # Encode to latents (same scaling as the SiT repo).
-            z1 = self._sit_vae.encode(x_start).latent_dist.sample().mul_(self._sit_vae_scaling)
-            z0 = torch.randn_like(z1)
-
-            # Linear interpolant in latent space.
-            zt = tau * z1 + (1.0 - tau) * z0
+            # Speed + stability:
+            # - Encode the *noisy* image (x_t_start) to latent space.
+            # - Use the latent mean (mode) instead of sampling to avoid injecting additional randomness
+            #   beyond the RS Gaussian noise.
+            #
+            # We treat the encoded latent as "z_t" at time τ and apply the one-shot linear-path formula.
+            use_amp = (self.device.type == "cuda") and (not enable_grad)
 
             # Unconditional denoising: use null token y = num_classes (1000 for ImageNet).
             y_null = torch.full((batch_size,), self._sit_num_classes, device=self.device, dtype=torch.long)
 
-            # SiT predicts velocity u_t. For Linear path:
-            #   u = x1 - x0
-            # and we can solve: x1 = x_t + (1 - t) * u
-            u = self.model(zt, tau_t, y_null)
-            z1_hat = zt + (1.0 - tau_t).view(batch_size, 1, 1, 1) * u
+            # Keep the VAE in fp32 for numerical stability and to avoid dtype/bias mismatches.
+            zt = self._sit_vae.encode(x_t_start).latent_dist.mode().mul_(self._sit_vae_scaling)
+
+            if use_amp:
+                # Autocast only around SiT (transformer) forward.
+                with torch.autocast("cuda", dtype=torch.float16):
+                    u = self.model(zt, tau_t, y_null)
+                    z1_hat = zt + (1.0 - tau_t).view(batch_size, 1, 1, 1) * u
+            else:
+                u = self.model(zt, tau_t, y_null)
+                z1_hat = zt + (1.0 - tau_t).view(batch_size, 1, 1, 1) * u
 
             x_hat = self._sit_vae.decode(z1_hat / self._sit_vae_scaling).sample
+
             return x_hat.clamp(-1, 1)

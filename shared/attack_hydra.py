@@ -8,6 +8,8 @@ from pathlib import Path
 
 import torch
 
+import os
+
 from ada_verona import (
     BinarySearchEpsilonValueEstimator,
     create_experiment_directory,
@@ -199,6 +201,14 @@ def main(cfg: DictConfig) -> None:
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
 
+    model_kwargs = {}
+    if dataset_name == "ImageNet" and denoiser_backend == "sit_latent":
+        model_kwargs["sit_vae_id"] = cfg.get("sit_vae_id", "stabilityai/sd-vae-ft-mse")
+        sit_lora_path = cfg.get("sit_lora_path", None)
+        if sit_lora_path is None and "PRJS" in os.environ:
+            sit_lora_path = str(Path(os.environ["PRJS"]) / "models" / "ImageNet" / "SiT" / "LoRA" / "sit_lora_sigma0p25.pt")
+        model_kwargs["sit_lora_path"] = sit_lora_path
+
     model = DiffusionRobustModel(
         classifier_type=classifier_type,
         classifier_name=classifier_name,
@@ -209,6 +219,7 @@ def main(cfg: DictConfig) -> None:
         pytorch_normalization=pytorch_normalization,
         denoiser_backend=denoiser_backend,
         model_subdir=diffusion_model_subdir,
+        **model_kwargs,
     )
 
     t = find_t_for_sigma(diffusion=model.diffusion, sigma=sigma, target_multiplier=sigma_target_multiplier)

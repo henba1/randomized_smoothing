@@ -45,7 +45,9 @@ class Smooth:
         alpha: float,
         batch_size: int,
         label: int | None = None,
-    ) -> (int, float):
+        seed: int | None = 0,
+        return_details: bool = False,
+    ) -> tuple[int, float] | tuple[int, float, dict]:
         """Monte Carlo algorithm for certifying that g's prediction around x is constant within some L2 radius.
         With probability at least 1 - alpha, the class returned by this method will equal g(x), and g's prediction will
         be robust within a L2 ball of radius R around x.
@@ -59,25 +61,57 @@ class Smooth:
                  in the case of abstention, the class will be ABSTAIN and the radius 0.
         """
         self.base_classifier.eval()
+        generator = None
+        if seed is not None:
+            generator = torch.Generator(device=x.device)
+            generator.manual_seed(seed)
         # draw samples of f(x+ epsilon)
-        counts_selection = self._sample_noise(x, n0, batch_size)
+        counts_selection = self._sample_noise(x, n0, batch_size, generator)
         # use these samples to take a guess at the top class
         cAHat = counts_selection.argmax().item()
         # check if prediction matches true label
         if label is not None and cAHat != label and self.sample_correct_predictions:
-            return Smooth.MISCLASSIFIED, 0.0
+            if not return_details:
+                return Smooth.MISCLASSIFIED, 0.0
+            return Smooth.MISCLASSIFIED, 0.0, {
+                "seed": seed,
+                "counts_selection": counts_selection.tolist(),
+                "counts_estimation": None,
+                "cAHat": cAHat,
+                "nA": None,
+                "pABar": None,
+            }
         # draw more samples of f(x + epsilon)
-        counts_estimation = self._sample_noise(x, n, batch_size)
+        counts_estimation = self._sample_noise(x, n, batch_size, generator)
         # use these samples to estimate a lower bound on pA
         nA = counts_estimation[cAHat].item()
         pABar = self._lower_confidence_bound(nA, n, alpha)
         if pABar < 0.5:
-            return Smooth.ABSTAIN, 0.0
-        else:
-            radius = self.sigma * norm.ppf(pABar)
+            if not return_details:
+                return Smooth.ABSTAIN, 0.0
+            return Smooth.ABSTAIN, 0.0, {
+                "seed": seed,
+                "counts_selection": counts_selection.tolist(),
+                "counts_estimation": counts_estimation.tolist(),
+                "cAHat": cAHat,
+                "nA": nA,
+                "pABar": pABar,
+            }
+        radius = self.sigma * norm.ppf(pABar)
+        if not return_details:
             return cAHat, radius
+        return cAHat, radius, {
+            "seed": seed,
+            "counts_selection": counts_selection.tolist(),
+            "counts_estimation": counts_estimation.tolist(),
+            "cAHat": cAHat,
+            "nA": nA,
+            "pABar": pABar,
+        }
 
-    def predict(self, x: torch.tensor, n: int, alpha: float, batch_size: int) -> int:
+    def predict(
+        self, x: torch.tensor, n: int, alpha: float, batch_size: int, seed: int | None = 0
+    ) -> int:
         """Monte Carlo algorithm for evaluating the prediction of g at x.  With probability at least 1 - alpha, the
         class returned by this method will equal g(x).
         This function uses the hypothesis test described in https://arxiv.org/abs/1610.03944
@@ -89,7 +123,11 @@ class Smooth:
         :return: the predicted class, or ABSTAIN
         """
         self.base_classifier.eval()
-        counts = self._sample_noise(x, n, batch_size)
+        generator = None
+        if seed is not None:
+            generator = torch.Generator(device=x.device)
+            generator.manual_seed(seed)
+        counts = self._sample_noise(x, n, batch_size, generator)
         top2 = counts.argsort()[::-1][:2]
         count1 = counts[top2[0]]
         count2 = counts[top2[1]]
@@ -170,7 +208,9 @@ class Smooth:
             
             return prediction
 
-    def _sample_noise(self, x: torch.tensor, num: int, batch_size) -> np.ndarray:
+    def _sample_noise(
+        self, x: torch.tensor, num: int, batch_size: int, generator: torch.Generator | None = None
+    ) -> np.ndarray:
         """Sample the base classifier's prediction under noisy corruptions of the input x.
         :param x: the input [channel x width x height]
         :param num: number of samples to collect
@@ -185,7 +225,11 @@ class Smooth:
 
                 batch = x.repeat((this_batch_size, 1, 1, 1))
 
-                predictions = self.base_classifier(batch, self.t).argmax(1)
+                try:
+                    logits = self.base_classifier(batch, self.t, generator=generator)
+                except TypeError:
+                    logits = self.base_classifier(batch, self.t)
+                predictions = logits.argmax(1)
                 counts += self._count_arr(predictions.cpu().numpy(), self.num_classes)
             
             # if torch.cuda.is_available():

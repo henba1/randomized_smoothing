@@ -55,6 +55,8 @@ def main(cfg: DictConfig):
     classifier_type = cfg.classifier_type
     classifier_name = cfg.classifier_name
     pytorch_normalization = cfg.get("pytorch_normalization", "none")
+    certify_seed = cfg.get("certify_seed", 0)
+    return_details = cfg.get("return_details", False)
     
     # Debug: Print resolved config values
     print(f"DEBUG: Resolved classifier_type = {repr(classifier_type)} (type: {type(classifier_type)})")
@@ -137,6 +139,8 @@ def main(cfg: DictConfig):
         "classifier_name": classifier_name,
         "pytorch_normalization": pytorch_normalization,
         "mode": mode,
+        "certify_seed": certify_seed,
+        "return_details": return_details,
     })
 
     tracker.log_metric("experiment_start_time", start_time)
@@ -248,10 +252,16 @@ def main(cfg: DictConfig):
                 radius = 0.0
             elif mode == "predict":
                 # Use N0 for predict mode (faster, sufficient for prediction without certification)
-                prediction = smoothed_classifier.predict(x, N0, alpha, batch_size)
+                prediction = smoothed_classifier.predict(x, N0, alpha, batch_size, seed=certify_seed)
                 radius = 0.0
             else:  # mode == "certify"
-                prediction, radius = smoothed_classifier.certify(x, N0, N, alpha, batch_size, label=label)
+                res = smoothed_classifier.certify(
+                    x, N0, N, alpha, batch_size, label=label, seed=certify_seed, return_details=return_details
+                )
+                if return_details:
+                    prediction, radius, details = res
+                else:
+                    prediction, radius = res
             after_time = time.time()
             
             certification_time = 0.0 if (prediction == Smooth.MISCLASSIFIED) else (after_time - before_time)
@@ -306,6 +316,8 @@ def main(cfg: DictConfig):
                 "correct": prediction == label,
                 "time_elapsed": time_elapsed
             })
+            if return_details and mode == "certify":
+                tracker.log_other(f"sample_{original_idx}_certify_details", details)
 
             print(f"{original_idx}\t{label}\t{prediction}\t{radius:.3}\t{correct}\t{time_elapsed}", file=f, flush=True)
 

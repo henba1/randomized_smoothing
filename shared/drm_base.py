@@ -186,11 +186,19 @@ class DiffusionRobustModelBase(nn.Module):
             return self.timm_target_size
         return self.default_target_size
 
-    def forward(self, x, t, *, enable_grad: bool = False):
+    def forward(
+        self,
+        x: torch.Tensor,
+        t: int,
+        *,
+        enable_grad: bool = False,
+        noise: torch.Tensor | None = None,
+        generator: torch.Generator | None = None,
+    ):
         grad_ctx = torch.enable_grad() if enable_grad else torch.no_grad()
         with grad_ctx:
             x_in = x * 2 - 1  # output is in [-1,1]
-            imgs = self.denoise(x_in, t, enable_grad=enable_grad)
+            imgs = self.denoise(x_in, t, enable_grad=enable_grad, noise=noise, generator=generator)
 
             target_size = self._resolve_target_size()
             imgs = torch.nn.functional.interpolate(
@@ -205,11 +213,26 @@ class DiffusionRobustModelBase(nn.Module):
             out = self.classifier(imgs)
             return out.logits if hasattr(out, "logits") else out
 
-    def denoise(self, x_start, t, multistep: bool = False, *, enable_grad: bool = False):
+    def denoise(
+        self,
+        x_start: torch.Tensor,
+        t: int,
+        multistep: bool = False,
+        *,
+        enable_grad: bool = False,
+        noise: torch.Tensor | None = None,
+        generator: torch.Generator | None = None,
+    ):
         grad_ctx = torch.enable_grad() if enable_grad else torch.no_grad()
         with grad_ctx:
             t_batch = torch.tensor([t] * len(x_start), device=self.device)
-            noise = torch.randn_like(x_start)
+            if noise is None:
+                if generator is None:
+                    noise = torch.randn_like(x_start)
+                else:
+                    noise = torch.randn(
+                        x_start.shape, dtype=x_start.dtype, device=x_start.device, generator=generator
+                    )
             x_t_start = self.diffusion.q_sample(x_start=x_start, t=t_batch, noise=noise)
 
             if multistep:
@@ -218,7 +241,9 @@ class DiffusionRobustModelBase(nn.Module):
                     t_batch = torch.tensor([i] * len(x_start), device=self.device)
                     out = self.diffusion.p_sample(self.model, out, t_batch, clip_denoised=True)["sample"]
             else:
-                out = self.diffusion.p_sample(self.model, x_t_start, t_batch, clip_denoised=True)["pred_xstart"]
+                out = self.diffusion.p_mean_variance(
+                    self.model, x_t_start, t_batch, clip_denoised=True
+                )["pred_xstart"]
 
             return out
 

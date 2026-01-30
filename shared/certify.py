@@ -66,6 +66,8 @@ def main(args=None, defaults=None):
     classifier_name = defaults.get("classifier_name")
     pytorch_normalization = defaults.get("pytorch_normalization", "none")
     experiment_tag = defaults.get("experiment_tag", None)
+    certify_seed = defaults.get("certify_seed", 0)
+    return_details = defaults.get("return_details", False)
     
     default_params = {
         "dataset_name": dataset_name,
@@ -82,6 +84,8 @@ def main(args=None, defaults=None):
         "classifier_type": classifier_type,
         "classifier_name": classifier_name,
         "pytorch_normalization": pytorch_normalization,
+        "certify_seed": certify_seed,
+        "return_details": return_details,
     }
     params = override_args_with_cli(default_params, args)
     (
@@ -99,6 +103,8 @@ def main(args=None, defaults=None):
         classifier_type,
         classifier_name,
         pytorch_normalization,
+        certify_seed,
+        return_details,
     ) = params.values()
     
     classifier_name_short = classifier_name.split("/")[-1] if classifier_name else "unknown"
@@ -177,6 +183,8 @@ def main(args=None, defaults=None):
         "classifier_name": classifier_name,
         "pytorch_normalization": pytorch_normalization,
         "mode": mode,
+        "certify_seed": certify_seed,
+        "return_details": return_details,
     })
     
     tracker.log_metric("experiment_start_time", start_time)
@@ -283,10 +291,16 @@ def main(args=None, defaults=None):
                 radius = 0.0
             elif mode == "predict":
                 # Use N0 for predict mode (faster, sufficient for prediction without certification)
-                prediction = smoothed_classifier.predict(x, N0, alpha, batch_size)
+                prediction = smoothed_classifier.predict(x, N0, alpha, batch_size, seed=certify_seed)
                 radius = 0.0
             else:  # mode == "certify"
-                prediction, radius = smoothed_classifier.certify(x, N0, N, alpha, batch_size, label=label)
+                res = smoothed_classifier.certify(
+                    x, N0, N, alpha, batch_size, label=label, seed=certify_seed, return_details=return_details
+                )
+                if return_details:
+                    prediction, radius, details = res
+                else:
+                    prediction, radius = res
             after_time = time.time()
             
             certification_time = 0.0 if (prediction == Smooth.MISCLASSIFIED) else (after_time - before_time)
@@ -341,6 +355,8 @@ def main(args=None, defaults=None):
                 "correct": prediction == label,
                 "time_elapsed": time_elapsed
             })
+            if return_details and mode == "certify":
+                tracker.log_other(f"sample_{original_idx}_certify_details", details)
             
             print(f"{original_idx}\t{label}\t{prediction}\t{radius:.3}\t{correct}\t{time_elapsed}", file=f, flush=True)
             
@@ -509,6 +525,13 @@ def create_argument_parser():
         type=str,
         default=None,
         help="Dataset name (e.g., 'CIFAR-10', 'MNIST', 'ImageNet')"
+    )
+    parser.add_argument("--certify_seed", type=int, default=None, help="seed for certify/predict noise draws")
+    parser.add_argument(
+        "--return_details",
+        type=lambda x: x if isinstance(x, bool) else x.lower() in ("true", "1", "yes", "t"),
+        default=None,
+        help="return and log extra certify stats",
     )
     return parser
 

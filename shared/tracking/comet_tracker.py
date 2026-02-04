@@ -34,7 +34,7 @@ class CometTracker:
             model_name: Name of the model
             ddpm_model_name: Name of the DDPM model
             project_name: Comet ML project name
-            experiment_type: High-level experiment type used for tagging (e.g. "certification", "pgd_eot_attack")
+            experiment_type: High-level experiment type used for tagging (e.g. "certification", "smoothadv")
             sigma: Noise hyperparameter for tagging
             alpha: Failure probability for tagging
             N0: Number of samples for initial prediction for tagging

@@ -7,7 +7,7 @@ import time
 import torch
 import torch.nn as nn
 
-from ada_verona import EOTPGDAttack
+from ada_verona import SmoothAdvAttack
 from ada_verona.database.verification_context import VerificationContext
 from ada_verona.database.verification_result import CompleteVerificationData, VerificationResult
 
@@ -61,7 +61,7 @@ class MinRadiusAttackVerifier:
     """
     Adapter for ada_verona epsilon estimators.
 
-    For a given epsilon, runs (EOT-)PGD a few times (restarts) and returns SAT if any run
+    For a given epsilon, runs SMOOTHADV a few times (restarts) and returns SAT if any run
     flips the *smoothed* prediction away from the certified class (excluding ABSTAIN).
     """
 
@@ -118,7 +118,7 @@ class MinRadiusAttackVerifier:
         x_sat: torch.Tensor | None = None
 
         for _ in range(max(1, self.restarts)):
-            attacker_eps = EOTPGDAttack(
+            attacker_eps = SmoothAdvAttack(
                 number_iterations=self.num_iter,
                 eot_samples=self.eot_samples,
                 rel_stepsize=float(self.step_size_rel) if self.step_size_rel is not None else None,

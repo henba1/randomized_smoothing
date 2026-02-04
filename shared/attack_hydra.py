@@ -1,4 +1,4 @@
-"""Hydra adversarial attack runner (PGD-EOT) for randomized smoothing defenses."""
+"""Hydra adversarial attack runner (SMOOTHADV) for randomized smoothing defenses."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import torch
 from ada_verona import (
     BinarySearchEpsilonValueEstimator,
     create_experiment_directory,
-    EOTPGDAttack,
+    SmoothAdvAttack,
     DataPoint,
     EpsilonStatus,
     VerificationContext,
@@ -56,7 +56,7 @@ def main(cfg: DictConfig) -> None:
     classifier_name_short = classifier_name.split("/")[-1] if classifier_name else "unknown"
     pytorch_normalization = str(cfg.get("pytorch_normalization", "none"))
 
-    experiment_type = str(cfg.get("experiment_type", "pgd_eot_attack"))
+    experiment_type = str(cfg.get("experiment_type", "smoothadv"))
     experiment_tag = cfg.get("experiment_tag", None)
 
     attack_cfg = cfg.attack
@@ -367,7 +367,7 @@ def main(cfg: DictConfig) -> None:
 
                 attack_eps_l2 = cert_radius_l2
                 y_attack = torch.tensor([cert_pred_int], device=device, dtype=torch.long)
-                attacker = EOTPGDAttack(
+                attacker = SmoothAdvAttack(
                     number_iterations=attack_num_iter,
                     eot_samples=attack_eot_samples,
                     rel_stepsize=float(step_size_rel) if step_size_rel is not None else None,
